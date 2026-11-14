@@ -1,4 +1,4 @@
-import { required } from "@/lib/builder/env";
+import { required, vercelAuthToken } from "@/lib/builder/env";
 import { oneLine, redact, sleep } from "@/lib/builder/text";
 
 type Deployment = {
@@ -35,7 +35,7 @@ async function listDeployments(query: Record<string, string>): Promise<Deploymen
   url.searchParams.set("teamId", required("VERCEL_TEAM_ID"));
   for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
   const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${required("VERCEL_TOKEN")}` },
+    headers: { Authorization: `Bearer ${vercelAuthToken()}` },
     cache: "no-store",
   });
   const text = await res.text();
@@ -94,7 +94,7 @@ export async function rollbackTo(deploymentId: string): Promise<void> {
   const res = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${required("VERCEL_TOKEN")}`,
+      Authorization: `Bearer ${vercelAuthToken()}`,
       "Content-Type": "application/json",
     },
     body: "{}",

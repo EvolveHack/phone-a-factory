@@ -7,6 +7,13 @@ export function required(name: string): string {
   return value;
 }
 
+/** Prefer a personal token. On Vercel, the project OIDC token is used when no personal token is set. */
+export function vercelAuthToken(): string {
+  const token = process.env.VERCEL_TOKEN?.trim() || process.env.VERCEL_OIDC_TOKEN?.trim();
+  if (!token) throw new Error("VERCEL_TOKEN is not set.");
+  return token;
+}
+
 export function repoSlug(): { owner: string; name: string; full: string } {
   const full = required("DISPATCH_BOARD_REPO");
   const parts = full.split("/");

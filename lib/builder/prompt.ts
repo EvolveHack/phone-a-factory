@@ -75,7 +75,7 @@ export function checkPrompt(request: FactoryRequest, previewPage: string): strin
     `1. ${done[0]}`,
     `2. ${done[1]}`,
     "",
-    "Start from this script and replace the check section:",
+    "Start from this script. Replace the ASSERT_FAIL section with checks for both lines. Exit 0 only when both lines are true.",
     CHECK_SKELETON,
   ].join("\n");
 }
@@ -116,5 +116,6 @@ await page.waitForSelector("[data-testid=board]", { timeout: 30000 });
 // })));
 
 await browser.close();
-process.exit(0);
+console.log("ASSERT_FAIL The script did not check the done-when lines.");
+process.exit(1);
 `;
