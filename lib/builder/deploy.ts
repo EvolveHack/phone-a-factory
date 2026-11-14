@@ -44,10 +44,14 @@ async function listDeployments(query: Record<string, string>): Promise<Deploymen
   return data.deployments ?? [];
 }
 
-function matches(d: Deployment, filter: { sha?: string; branch?: string }): boolean {
-  if (filter.sha && d.meta?.githubCommitSha === filter.sha) return true;
-  if (filter.branch && d.meta?.githubCommitRef === filter.branch) return true;
-  return !filter.sha && !filter.branch;
+/** true when the deploy matches, false when it does not, null when the response has no git meta. */
+function matches(d: Deployment, filter: { sha?: string; branch?: string }): boolean | null {
+  const sha = d.meta?.githubCommitSha;
+  const branch = d.meta?.githubCommitRef;
+  if (filter.sha && sha) return sha === filter.sha;
+  if (filter.branch && branch) return branch === filter.branch;
+  if (!sha && !branch) return null;
+  return false;
 }
 
 export async function waitForDeploy(filter: {
@@ -63,7 +67,9 @@ export async function waitForDeploy(filter: {
     if (filter.sha) query.sha = filter.sha;
     if (filter.branch) query.branch = filter.branch;
     const listed = await listDeployments(query);
-    const hits = listed.filter((d) => matches(d, filter));
+    const known = listed.filter((d) => matches(d, filter) === true);
+    const unknown = listed.filter((d) => matches(d, filter) === null);
+    const hits = known.length > 0 ? known : unknown;
     const ready = hits.find(isReady);
     if (ready?.url) return { id: deploymentId(ready), url: `https://${ready.url}` };
     if (hits.some(isFailed)) throw new Error("The deploy failed.");

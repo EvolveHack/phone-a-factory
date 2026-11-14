@@ -67,12 +67,13 @@ export async function mergePullRequest(url: string): Promise<string> {
     body: { merge_method: "squash" },
   });
   if ((merged.status === 200 || merged.status === 201) && merged.data.sha) return merged.data.sha;
-  const retry = await github<{ sha?: string }>(`/pulls/${number}/merge`, {
+  const retry = await github<{ sha?: string; message?: string }>(`/pulls/${number}/merge`, {
     method: "PUT",
     body: { merge_method: "merge" },
   });
   if ((retry.status === 200 || retry.status === 201) && retry.data.sha) return retry.data.sha;
-  throw new Error(`Could not merge the pull request (${merged.status}).`);
+  const message = (merged.data as { message?: string }).message || retry.data.message || "";
+  throw new Error(`Could not merge the pull request (${merged.status}). ${oneLine(message)}`.trim());
 }
 
 export async function closePullRequest(url: string): Promise<void> {
