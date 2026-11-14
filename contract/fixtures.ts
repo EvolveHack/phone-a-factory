@@ -9,6 +9,7 @@ const facts = (over: Partial<Facts>): Facts => ({
   changesDataOrCalculation: no,
   appliesToEveryCustomer: no,
   newScreenOrConnection: no,
+  controlsDevices: no,
   displayOnly: no,
   ...over,
 });

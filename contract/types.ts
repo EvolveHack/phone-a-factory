@@ -1,6 +1,6 @@
 // CONTRACT. Only the owner edits this file. Agents: ask, do not change.
-import type { CustomerId } from "./view";
-export type { CustomerId } from "./view";
+import type { CustomerId } from "./products";
+export type { CustomerId, ProductId } from "./products";
 
 export type Ending = "goes_live" | "needs_person";
 
@@ -19,14 +19,15 @@ export type Status =
   | "undone" // rolled back after going live
   | "vetoed"; // stopped by the Veto button
 
-export type RuleId = "R1" | "R2" | "R3" | "R4" | "R5" | "DEFAULT";
+export type RuleId = "R1" | "R2" | "R3" | "R4" | "R5" | "R6" | "DEFAULT";
 
-export type ApproverRole = "security_lead" | "engineering_lead" | "product_owner";
+export type ApproverRole = "security_lead" | "engineering_lead" | "product_owner" | "safety_lead";
 
 export const APPROVERS: Record<ApproverRole, string> = {
   security_lead: "Security lead",
   engineering_lead: "Engineering lead",
   product_owner: "Product owner",
+  safety_lead: "Safety lead",
 };
 
 /** A fact the model pulled from the call. quote must appear word for word in callerWords, or value becomes "unknown". */
@@ -40,8 +41,9 @@ export interface Facts {
   touchesMoney: Fact; // R2: rates, margins, detention, charges, invoices
   changesDataOrCalculation: Fact; // R3: saved data, calculations, validation
   appliesToEveryCustomer: Fact; // R4
-  newScreenOrConnection: Fact; // R4: new page, EDI, truck tracking, etc.
-  displayOnly: Fact; // R5: columns, labels, filters, sorting, colors, highlights, layout of the caller's own board
+  newScreenOrConnection: Fact; // R4: shared screens, or a connection to an outside system (accounting, EDI, email to outsiders)
+  controlsDevices: Fact; // R6: changes how physical devices behave (setpoints, locks, motors), not just alerts or reports
+  displayOnly: Fact; // R5: a change or a self-contained feature inside the caller's own product only (what they see or get)
 }
 
 export type BoardArea = "loads_table" | "map" | "exceptions" | "other";
