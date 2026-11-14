@@ -56,13 +56,20 @@ try {
 }
 `;
 
+/** ROOT_SELECTOR set (Dispatch Board): shoot that element. Not set: shoot the page once it has loaded. */
 export const screenshotScript = `${LAUNCH}
 try {
   const page = await browser.newPage({ viewport: { width: 700, height: 900 } });
   await page.setExtraHTTPHeaders(bypassHeaders());
   await page.goto(process.env.PAGE_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
-  await page.waitForSelector("[data-testid=board]", { timeout: 30000 });
-  await page.locator("[data-testid=board]").screenshot({ path: process.env.OUT_PATH });
+  const root = process.env.ROOT_SELECTOR;
+  if (root) {
+    await page.waitForSelector(root, { timeout: 30000 });
+    await page.locator(root).screenshot({ path: process.env.OUT_PATH });
+  } else {
+    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => undefined);
+    await page.screenshot({ path: process.env.OUT_PATH });
+  }
   await browser.close();
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));

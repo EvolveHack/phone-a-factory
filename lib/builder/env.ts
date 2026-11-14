@@ -1,4 +1,4 @@
-import { CUSTOMER_IDS, CUSTOMERS, type CustomerId } from "@/contract/view";
+import { customerInfo, productOf, tenantDir, type CustomerId, type Product } from "@/contract/products";
 import type { Ending } from "@/contract/types";
 
 export function required(name: string): string {
@@ -14,31 +14,20 @@ export function vercelAuthToken(): string {
   return token;
 }
 
-export function repoSlug(): { owner: string; name: string; full: string } {
-  const full = required("DISPATCH_BOARD_REPO");
-  const parts = full.split("/");
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new Error("DISPATCH_BOARD_REPO must look like owner/repo.");
-  }
-  return { owner: parts[0], name: parts[1], full };
+export function repoSlug(repo: string): { owner: string; name: string; full: string } {
+  const parts = repo.split("/");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) throw new Error(`${repo} must look like owner/repo.`);
+  return { owner: parts[0], name: parts[1], full: repo };
 }
 
-export function otherCustomer(customer: CustomerId): CustomerId {
-  const other = CUSTOMER_IDS.find((id) => id !== customer);
-  if (!other) throw new Error("There is no other customer to compare.");
-  return other;
+/** The customer's page on a deploy of its product: that deploy's origin plus the customer's path. */
+export function pageUrl(base: string, customer: CustomerId): string {
+  return new URL(customerInfo(customer).path, new URL(base).origin).toString();
 }
 
-export function customerName(customer: CustomerId): string {
-  return CUSTOMERS[customer].name;
-}
-
-export function customerPage(base: string, customer: CustomerId): string {
-  const url = new URL(base);
-  url.pathname = `/t/${customer}`;
-  url.search = "";
-  url.hash = "";
-  return url.toString();
+/** The preview bypass secret for this product's Vercel project, if one is set. */
+export function bypassSecret(product: Product): string | undefined {
+  return process.env[product.bypassEnv]?.trim() || undefined;
 }
 
 /** Sandbox calls need the phone-a-factory project. On Vercel, VERCEL_PROJECT_ID is set for this app. */
@@ -50,18 +39,21 @@ export function sandboxCredentials(): { token: string; teamId: string; projectId
   return undefined;
 }
 
-export function fileAllowed(file: string, customer: CustomerId, ending: Ending): boolean {
-  const path = file.replace(/\\/g, "/").replace(/^\.\//, "").replace(/^"|"$/g, "");
-  if (!path || path.startsWith("contract/")) return false;
-  if (ending === "goes_live") {
-    return path === `tenants/${customer}/view.json` || path === `tenants/${customer}/overrides.tsx`;
-  }
-  const other = otherCustomer(customer);
-  return path !== `tenants/${other}` && !path.startsWith(`tenants/${other}/`);
+function underFolder(path: string, folder: string): boolean {
+  return !folder || path.startsWith(`${folder}/`);
 }
 
-export function allowedFileList(customer: CustomerId, ending: Ending): string[] {
-  const files = [`tenants/${customer}/view.json`, `tenants/${customer}/overrides.tsx`];
-  if (ending === "needs_person") files.push(`tenants/${customer}/billing.json`);
-  return files;
+/**
+ * goes_live: only the caller's own tenant folder, and never a billing.json (money).
+ * needs_person: anything in the product's folder, including other tenants of the same product,
+ * so "roll out to everyone" works. Never another product's folder, never contract/.
+ */
+export function fileAllowed(file: string, customer: CustomerId, ending: Ending): boolean {
+  const path = file.replace(/\\/g, "/").replace(/^\.\//, "").replace(/^"|"$/g, "");
+  const { folder } = productOf(customer);
+  if (!path || path.startsWith("contract/") || path.startsWith(`${folder}/contract/`)) return false;
+  if (ending === "goes_live") {
+    return path.startsWith(`${tenantDir(customer)}/`) && !path.endsWith("/billing.json");
+  }
+  return underFolder(path, folder);
 }

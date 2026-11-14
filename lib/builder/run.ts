@@ -1,11 +1,12 @@
 import { put } from "@vercel/blob";
 import type { Sandbox } from "@vercel/sandbox";
+import { customerInfo, otherCustomerOf, productOf, tenantDir, type CustomerId, type Product } from "@/contract/products";
 import type { BuildStepName, Ending, FactoryRequest } from "@/contract/types";
 import { compareScript, fastCheckScript, screenshotScript } from "@/lib/builder/browser";
-import { customerName, customerPage, fileAllowed, otherCustomer, repoSlug, required } from "@/lib/builder/env";
+import { bypassSecret, fileAllowed, pageUrl, repoSlug } from "@/lib/builder/env";
 import { promote } from "@/lib/builder/index";
 import { openPullRequest } from "@/lib/builder/github";
-import { checkPrompt, editPrompt, fixCheckPrompt, fixPrompt } from "@/lib/builder/prompt";
+import { checkPrompt, editPrompt, fixCheckPrompt, fixPrompt, rootSelector } from "@/lib/builder/prompt";
 import { absoluteDir, commandMust, commandOutput, createBuildSandbox, findRepoDir, setOrigin } from "@/lib/builder/sandbox";
 import { branchName, buildSandboxName, errorText } from "@/lib/builder/text";
 import { waitForDeploy } from "@/lib/builder/deploy";
@@ -20,6 +21,7 @@ class BuildStopped extends Error {
 
 type Ctx = {
   request: FactoryRequest;
+  product: Product;
   ending: Ending;
   sandbox: Sandbox | null;
   cwd: string;
@@ -66,7 +68,7 @@ function browserEnv(ctx: Ctx, extra: Record<string, string>): Record<string, str
     BOARD_PACKAGE_JSON: `${ctx.absCwd}/package.json`,
     ...extra,
   };
-  const secret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
+  const secret = bypassSecret(ctx.product);
   if (secret) env.VERCEL_AUTOMATION_BYPASS_SECRET = secret;
   return env;
 }
@@ -88,12 +90,38 @@ async function prepareRepo(ctx: Ctx): Promise<void> {
   const branch = branchName(ctx.request.id);
   await commandMust(ctx.sandbox, { cmd: "git", args: ["config", "user.email", process.env.BUILDER_GIT_EMAIL?.trim() || "builder@phone-a-factory.local"], cwd: ctx.cwd }, "Could not set the git email.");
   await commandMust(ctx.sandbox, { cmd: "git", args: ["config", "user.name", "Phone a factory"], cwd: ctx.cwd }, "Could not set the git name.");
-  await setOrigin(ctx.sandbox, ctx.cwd, true);
-  await commandMust(ctx.sandbox, { cmd: "git", args: ["fetch", "origin", "+refs/heads/main:refs/remotes/origin/main"], cwd: ctx.cwd, timeoutMs: 60_000 }, "Could not fetch Dispatch Board.");
+  const snapshotSha = (await commandOutput(ctx.sandbox, { cmd: "git", args: ["rev-parse", "HEAD"], cwd: ctx.cwd })).out.trim();
+  await setOrigin(ctx.sandbox, ctx.cwd, ctx.product.repo, true);
+  await commandMust(ctx.sandbox, { cmd: "git", args: ["fetch", "origin", "+refs/heads/main:refs/remotes/origin/main"], cwd: ctx.cwd, timeoutMs: 60_000 }, `Could not fetch ${ctx.product.repo}.`);
   await commandMust(ctx.sandbox, { cmd: "git", args: ["checkout", "-B", "main", "origin/main"], cwd: ctx.cwd }, "Could not update main.");
   ctx.baseSha = (await commandMust(ctx.sandbox, { cmd: "git", args: ["rev-parse", "HEAD"], cwd: ctx.cwd }, "Could not read main.")).trim() || null;
   await commandMust(ctx.sandbox, { cmd: "git", args: ["checkout", "-B", branch], cwd: ctx.cwd }, "Could not create the branch.");
-  await setOrigin(ctx.sandbox, ctx.cwd, false);
+  await setOrigin(ctx.sandbox, ctx.cwd, ctx.product.repo, false);
+  await installIfLockChanged(ctx, snapshotSha);
+}
+
+/** The snapshot has node_modules for the commit it was taken from. When package-lock.json changed since, run npm ci,
+ *  then put back the Playwright the snapshot added outside package.json (its browser stays in the cache). */
+async function installIfLockChanged(ctx: Ctx, snapshotSha: string): Promise<void> {
+  if (!ctx.sandbox) throw new Error("The sandbox is not running.");
+  const same = snapshotSha
+    ? await commandOutput(ctx.sandbox, { cmd: "git", args: ["diff", "--quiet", snapshotSha, "HEAD", "--", "package-lock.json"], cwd: ctx.cwd })
+    : { code: 1, out: "" };
+  if (same.code === 0) return;
+  const version = (
+    await commandOutput(ctx.sandbox, { cmd: "node", args: ["-p", "require('playwright/package.json').version"], cwd: ctx.cwd })
+  ).out.split("\n").at(-1)?.trim();
+  await commandMust(ctx.sandbox, { cmd: "npm", args: ["ci"], cwd: ctx.cwd, timeoutMs: 300_000 }, "npm ci failed.");
+  await commandMust(
+    ctx.sandbox,
+    {
+      cmd: "bash",
+      args: ["-c", `node -e "require.resolve('playwright')" 2>/dev/null || npm install --no-save playwright@${/^\d+\.\d+\.\d+$/.test(version ?? "") ? version : "latest"}`],
+      cwd: ctx.cwd,
+      timeoutMs: 180_000,
+    },
+    "Could not put Playwright back after npm ci.",
+  );
 }
 
 async function runBuildCommand(ctx: Ctx): Promise<{ code: number; out: string }> {
@@ -101,20 +129,41 @@ async function runBuildCommand(ctx: Ctx): Promise<{ code: number; out: string }>
   return commandOutput(ctx.sandbox, { cmd: "npm", args: ["run", "build"], cwd: ctx.cwd, timeoutMs: 180_000 });
 }
 
-async function checkCaller(ctx: Ctx, previewPage: string): Promise<boolean> {
+/** Run the product's proof script for one customer on the preview. Exit 0 = proven. */
+async function proveFor(ctx: Ctx, previewOrigin: string, customer: CustomerId): Promise<void> {
+  if (!ctx.sandbox || !ctx.product.proofCommand) throw new Error("There is no proof to run.");
+  const result = await commandOutput(ctx.sandbox, {
+    cmd: "bash",
+    args: ["-c", ctx.product.proofCommand],
+    cwd: ctx.cwd,
+    env: browserEnv(ctx, { PAGE_URL: pageUrl(previewOrigin, customer), CUSTOMER: customer }),
+    timeoutMs: 120_000,
+  });
+  if (result.code !== 0) {
+    const assertLine = result.out.split("\n").find((line) => line.includes("ASSERT_FAIL"));
+    throw new Error(`${customerInfo(customer).name}'s page failed the ${ctx.product.name} proof. ${assertLine ?? result.out.slice(-300)}`.trim());
+  }
+}
+
+/** Returns true when the fast view.json check was used. */
+async function checkCaller(ctx: Ctx, previewOrigin: string, previewPage: string): Promise<boolean> {
   if (!ctx.sandbox) throw new Error("The sandbox is not running.");
-  const viewOnly = `tenants/${ctx.request.customer}/view.json`;
-  if (ctx.changed.length > 0 && ctx.changed.every((file) => file === viewOnly)) {
-    await ctx.sandbox.writeFiles([{ path: "/tmp/paf-fast.mjs", content: fastCheckScript }]);
-    const fast = await commandOutput(ctx.sandbox, {
-      cmd: "node",
-      args: ["/tmp/paf-fast.mjs"],
-      cwd: ctx.cwd,
-      env: browserEnv(ctx, { PAGE_URL: previewPage, VIEW_PATH: `${ctx.absCwd}/${viewOnly}` }),
-      timeoutMs: 90_000,
-    });
-    if (fast.code !== 0) throw new Error(`The caller's board does not show the new view. ${fast.out}`.trim());
-    return true;
+  if (ctx.product.proofCommand) {
+    await proveFor(ctx, previewOrigin, ctx.request.customer);
+  } else {
+    const viewOnly = `${tenantDir(ctx.request.customer)}/view.json`;
+    if (ctx.changed.length > 0 && ctx.changed.every((file) => file === viewOnly)) {
+      await ctx.sandbox.writeFiles([{ path: "/tmp/paf-fast.mjs", content: fastCheckScript }]);
+      const fast = await commandOutput(ctx.sandbox, {
+        cmd: "node",
+        args: ["/tmp/paf-fast.mjs"],
+        cwd: ctx.cwd,
+        env: browserEnv(ctx, { PAGE_URL: previewPage, VIEW_PATH: `${ctx.absCwd}/${viewOnly}` }),
+        timeoutMs: 90_000,
+      });
+      if (fast.code !== 0) throw new Error(`The caller's board does not show the new view. ${fast.out}`.trim());
+      return true;
+    }
   }
   await claude(ctx, checkPrompt(ctx.request, previewPage), 240_000, "haiku");
   const run = () => commandOutput(ctx.sandbox!, {
@@ -131,7 +180,7 @@ async function checkCaller(ctx: Ctx, previewPage: string): Promise<boolean> {
     result = await run();
   }
   if (result.code !== 0) {
-    throw new Error("The caller's board did not match the done-when lines.");
+    throw new Error("The caller's page did not match the done-when lines.");
   }
   return false;
 }
@@ -140,26 +189,32 @@ async function checkCaller(ctx: Ctx, previewPage: string): Promise<boolean> {
 async function baseOrigin(ctx: Ctx): Promise<string> {
   if (ctx.baseSha) {
     try {
-      const base = await waitForDeploy({ sha: ctx.baseSha, target: "production", timeoutMs: 20_000 });
+      const base = await waitForDeploy({ projectId: ctx.product.vercelProjectId, sha: ctx.baseSha, target: "production", timeoutMs: 20_000 });
       return base.url;
     } catch {
       // Fall back to the production address.
     }
   }
-  return required("DISPATCH_BOARD_PROD_URL");
+  return ctx.product.prodUrl;
 }
 
 async function checkOther(ctx: Ctx, previewOrigin: string): Promise<void> {
   if (!ctx.sandbox) throw new Error("The sandbox is not running.");
-  const other = otherCustomer(ctx.request.customer);
+  const other = otherCustomerOf(ctx.request.customer);
+  if (ctx.product.proofCommand) {
+    // A proof per product: the other customer of the same product still works on the preview.
+    await proveFor(ctx, previewOrigin, other);
+    await pass(ctx, `${customerInfo(other).name}'s page still works.`);
+    return;
+  }
   await ctx.sandbox.writeFiles([{ path: "/tmp/paf-compare.mjs", content: compareScript }]);
   const result = await commandOutput(ctx.sandbox, {
     cmd: "node",
     args: ["/tmp/paf-compare.mjs"],
     cwd: ctx.cwd,
     env: browserEnv(ctx, {
-      PROD_URL: customerPage(await baseOrigin(ctx), other),
-      PREVIEW_URL: customerPage(previewOrigin, other),
+      PROD_URL: pageUrl(await baseOrigin(ctx), other),
+      PREVIEW_URL: pageUrl(previewOrigin, other),
     }),
     timeoutMs: 90_000,
   });
@@ -175,14 +230,14 @@ async function checkOther(ctx: Ctx, previewOrigin: string): Promise<void> {
   await pass(ctx, "The other customer's board changed. A person will review this.");
 }
 
-async function shoot(ctx: Ctx, pageUrl: string, outPath: string): Promise<Buffer> {
+async function shoot(ctx: Ctx, page: string, outPath: string): Promise<Buffer> {
   if (!ctx.sandbox) throw new Error("The sandbox is not running.");
   await ctx.sandbox.writeFiles([{ path: "/tmp/paf-shot.mjs", content: screenshotScript }]);
   const result = await commandOutput(ctx.sandbox, {
     cmd: "node",
     args: ["/tmp/paf-shot.mjs"],
     cwd: ctx.cwd,
-    env: browserEnv(ctx, { PAGE_URL: pageUrl, OUT_PATH: outPath }),
+    env: browserEnv(ctx, { PAGE_URL: page, OUT_PATH: outPath, ROOT_SELECTOR: rootSelector(ctx.request.customer) ?? "" }),
     timeoutMs: 90_000,
   });
   if (result.code !== 0) throw new Error(`Could not take a screenshot. ${result.out}`.trim());
@@ -192,7 +247,7 @@ async function shoot(ctx: Ctx, pageUrl: string, outPath: string): Promise<Buffer
 }
 
 async function saveScreenshots(ctx: Ctx, previewPage: string): Promise<void> {
-  const before = await shoot(ctx, customerPage(required("DISPATCH_BOARD_PROD_URL"), ctx.request.customer), "/tmp/paf-before.png");
+  const before = await shoot(ctx, pageUrl(ctx.product.prodUrl, ctx.request.customer), "/tmp/paf-before.png");
   const after = await shoot(ctx, previewPage, "/tmp/paf-after.png");
   const [beforeBlob, afterBlob] = await Promise.all([
     put(`screenshots/${ctx.request.id}/before.png`, before, { access: "public", contentType: "image/png", addRandomSuffix: true }),
@@ -211,7 +266,7 @@ async function fail(ctx: Ctx, error: unknown): Promise<void> {
   if (!current || current.status === "vetoed" || current.status === "live" || current.status === "waiting_for_approval") return;
   const reason = errorText(error);
   if (ctx.sandbox && ctx.previewOrigin && !ctx.screenshotsSaved && ctx.step !== "screenshot") {
-    const page = customerPage(ctx.previewOrigin, ctx.request.customer);
+    const page = pageUrl(ctx.previewOrigin, ctx.request.customer);
     await saveScreenshots(ctx, page).catch(() => undefined);
   }
   await addStep({ requestId: ctx.request.id, step: ctx.step, status: "failed", log: reason });
@@ -227,6 +282,7 @@ export async function runBuild(requestId: string): Promise<void> {
 
   const ctx: Ctx = {
     request: initial,
+    product: productOf(initial.customer),
     ending: initial.rule?.ending ?? "needs_person",
     sandbox: null,
     cwd: "",
@@ -241,14 +297,15 @@ export async function runBuild(requestId: string): Promise<void> {
   try {
     const name = buildSandboxName(requestId);
     await begin(ctx, "sandbox_ready", "Starting the sandbox from the snapshot.");
-    ctx.sandbox = await createBuildSandbox(name);
-    const { name: repoName } = repoSlug();
+    ctx.sandbox = await createBuildSandbox(name, ctx.product);
+    const { name: repoName } = repoSlug(ctx.product.repo);
     ctx.cwd = await findRepoDir(ctx.sandbox, repoName);
     ctx.absCwd = await absoluteDir(ctx.sandbox, ctx.cwd);
     await prepareRepo(ctx);
     await pass(ctx, `The sandbox ${name} is ready.`);
 
-    await begin(ctx, "agent_editing", `Editing ${customerName(ctx.request.customer)}'s board.`);
+    const customerName = customerInfo(ctx.request.customer).name;
+    await begin(ctx, "agent_editing", `Editing ${ctx.product.name} for ${customerName}.`);
     await claude(ctx, editPrompt(ctx.request, ctx.ending), 150_000);
     await pass(ctx, "The edit is in the working tree.");
 
@@ -286,9 +343,9 @@ export async function runBuild(requestId: string): Promise<void> {
 
     await begin(ctx, "pr_opened", "Opening the pull request.");
     const branch = branchName(requestId);
-    const title = `${customerName(ctx.request.customer)}: ${ctx.request.classification?.askOneLine ?? ctx.request.ask}`;
+    const title = `${ctx.product.name}, ${customerName}: ${ctx.request.classification?.askOneLine ?? ctx.request.ask}`;
     const body = [
-      `${customerName(ctx.request.customer)} asked: ${ctx.request.ask}`,
+      `${customerName} (${ctx.product.name}) asked: ${ctx.request.ask}`,
       "",
       "Done when:",
       ...(ctx.request.classification?.doneWhen ?? []).map((line) => `- ${line}`),
@@ -296,7 +353,7 @@ export async function runBuild(requestId: string): Promise<void> {
       ctx.request.rule?.reason ?? "",
     ].join("\n").trim();
     await ctx.sandbox.writeFiles([{ path: "/tmp/paf-commit.txt", content: `${title}\n` }]);
-    await setOrigin(ctx.sandbox, ctx.cwd, true);
+    await setOrigin(ctx.sandbox, ctx.cwd, ctx.product.repo, true);
     await commandMust(ctx.sandbox, { cmd: "git", args: ["add", "-A"], cwd: ctx.cwd }, "Could not stage the change.");
     await commandMust(ctx.sandbox, { cmd: "git", args: ["commit", "-F", "/tmp/paf-commit.txt"], cwd: ctx.cwd }, "Could not commit the change.");
     await commandMust(
@@ -304,23 +361,27 @@ export async function runBuild(requestId: string): Promise<void> {
       { cmd: "git", args: ["push", "-u", "origin", `HEAD:${branch}`], cwd: ctx.cwd, timeoutMs: 60_000 },
       "Could not push the branch.",
     );
-    await setOrigin(ctx.sandbox, ctx.cwd, false);
-    const pullUrl = await openPullRequest({ branch, title: title.slice(0, 120), body });
+    await setOrigin(ctx.sandbox, ctx.cwd, ctx.product.repo, false);
+    const pullUrl = await openPullRequest(ctx.product.repo, { branch, title: title.slice(0, 120), body });
     await updateRequest(requestId, { pullRequestUrl: pullUrl });
     await pass(ctx, "The pull request is open.");
 
     await begin(ctx, "preview_deployed", "Waiting for the preview.");
-    const preview = await waitForDeploy({ branch, timeoutMs: 180_000 });
+    const preview = await waitForDeploy({ projectId: ctx.product.vercelProjectId, branch, timeoutMs: 180_000 });
     ctx.previewOrigin = preview.url;
-    const previewPage = customerPage(preview.url, ctx.request.customer);
+    const previewPage = pageUrl(preview.url, ctx.request.customer);
     await updateRequest(requestId, { previewUrl: previewPage });
     await pass(ctx, "The preview is ready.");
 
-    await begin(ctx, "browser_check_caller", "Checking the caller's board.");
-    const fast = await checkCaller(ctx, previewPage);
-    await pass(ctx, fast ? "The caller's board shows the new view exactly." : "The caller's board matches the done-when lines.");
+    await begin(ctx, "browser_check_caller", "Checking the caller's page.");
+    const fast = await checkCaller(ctx, preview.url, previewPage);
+    await pass(ctx, fast ? "The caller's board shows the new view exactly." : "The caller's page matches the done-when lines.");
 
-    await begin(ctx, "browser_check_other_customer", "Checking that the other customer's board stayed the same.");
+    await begin(
+      ctx,
+      "browser_check_other_customer",
+      ctx.product.proofCommand ? "Checking that the other customer's page still works." : "Checking that the other customer's board stayed the same.",
+    );
     await checkOther(ctx, preview.url);
 
     await begin(ctx, "screenshot", "Saving the before and after screenshots.");

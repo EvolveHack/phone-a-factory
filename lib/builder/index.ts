@@ -5,6 +5,7 @@ import { closePullRequest, mergePullRequest, revertPullRequestOnMain } from "@/l
 import { stopSandbox } from "@/lib/builder/sandbox";
 import { errorText, sandboxNameFromLog } from "@/lib/builder/text";
 import { addStep, getRequest, getState, setStatus, updateRequest, withMergeLock } from "@/lib/store";
+import { productOf } from "@/contract/products";
 import type { FactoryRequest } from "@/contract/types";
 
 async function linkWorkOrder(request: FactoryRequest): Promise<void> {
@@ -45,24 +46,25 @@ export async function promote(requestId: string): Promise<void> {
   if (!request) throw new Error("This request was not found.");
   if (request.status === "live") return;
   if (!request.pullRequestUrl) throw new Error("This request has no pull request to merge.");
+  const product = productOf(request.customer);
   try {
     await addStep({ requestId, step: "promoted", status: "running", log: "Waiting for its turn to merge." });
     const pullUrl = request.pullRequestUrl;
-    const merged = await withMergeLock(async () => {
+    const merged = await withMergeLock(product.repo, async () => {
       let sha: string;
       try {
-        sha = await mergePullRequest(pullUrl);
+        sha = await mergePullRequest(product.repo, pullUrl);
       } catch (error) {
         if (isConflict(error)) return null;
         throw error;
       }
       await addStep({ requestId, step: "promoted", status: "running", log: "Merged. Waiting for production." });
-      const deploy = await waitForDeploy({ sha, target: "production", timeoutMs: 180_000 });
-      await promoteDeployment(deploy.id);
+      const deploy = await waitForDeploy({ projectId: product.vercelProjectId, sha, target: "production", timeoutMs: 180_000 });
+      await promoteDeployment(product.vercelProjectId, deploy.id);
       return sha;
     });
     if (merged === null) {
-      await rebuildOnTop(requestId, pullUrl);
+      await rebuildOnTop(requestId, product.repo, pullUrl);
       return;
     }
     await addStep({ requestId, step: "promoted", status: "passed", log: "Production is updated." });
@@ -85,9 +87,9 @@ function isConflict(error: unknown): boolean {
 }
 
 /** Another change reached main first and touched the same file. Build this ask again on top of it. */
-async function rebuildOnTop(requestId: string, pullUrl: string): Promise<void> {
-  await closePullRequest(pullUrl).catch(() => undefined);
-  await addStep({ requestId, step: "promoted", status: "failed", log: "Another change reached this board first. Building again on top of it." });
+async function rebuildOnTop(requestId: string, repo: string, pullUrl: string): Promise<void> {
+  await closePullRequest(repo, pullUrl).catch(() => undefined);
+  await addStep({ requestId, step: "promoted", status: "failed", log: "Another change reached the same files first. Building again on top of it." });
   await updateRequest(requestId, { pullRequestUrl: null, previewUrl: null, screenshotBeforeUrl: null, screenshotAfterUrl: null });
   await setStatus(requestId, "queued", "Building again on top of a newer change.");
 }
@@ -98,14 +100,15 @@ export async function undo(requestId: string): Promise<void> {
   if (request.status !== "live") throw new Error("Only a live change can be undone.");
   if (!request.pullRequestUrl) throw new Error("This change has no pull request to undo.");
   const pullUrl = request.pullRequestUrl;
+  const product = productOf(request.customer);
   // Take only this change out of the code, then make that deploy live. Other live changes stay.
-  await withMergeLock(async () => {
-    const sha = await revertPullRequestOnMain(pullUrl);
+  await withMergeLock(product.repo, async () => {
+    const sha = await revertPullRequestOnMain(product.repo, pullUrl);
     if (!sha) return;
-    const deploy = await waitForDeploy({ sha, target: "production", timeoutMs: 180_000 });
-    await promoteDeployment(deploy.id);
+    const deploy = await waitForDeploy({ projectId: product.vercelProjectId, sha, target: "production", timeoutMs: 180_000 });
+    await promoteDeployment(product.vercelProjectId, deploy.id);
   });
-  await setStatus(requestId, "undone", "The change was removed from the code, and the board was updated. Other changes stay live.");
+  await setStatus(requestId, "undone", `The change was removed from the code, and ${product.name} was updated. Other changes stay live.`);
 }
 
 export async function veto(requestId: string): Promise<void> {
@@ -119,6 +122,6 @@ export async function veto(requestId: string): Promise<void> {
     await stopSandbox(name).catch(() => undefined);
     break;
   }
-  if (request.pullRequestUrl) await closePullRequest(request.pullRequestUrl).catch(() => undefined);
+  if (request.pullRequestUrl) await closePullRequest(productOf(request.customer).repo, request.pullRequestUrl).catch(() => undefined);
   await setStatus(requestId, "vetoed", "The build was stopped.");
 }

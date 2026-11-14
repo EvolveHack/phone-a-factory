@@ -9,8 +9,8 @@ type Pull = {
   merge_commit_sha?: string | null;
 };
 
-async function github<T>(path: string, init?: { method?: string; body?: unknown }): Promise<{ status: number; data: T }> {
-  const { owner, name } = repoSlug();
+async function github<T>(repo: string, path: string, init?: { method?: string; body?: unknown }): Promise<{ status: number; data: T }> {
+  const { owner, name } = repoSlug(repo);
   const res = await fetch(`https://api.github.com/repos/${owner}/${name}${path}`, {
     method: init?.method ?? "GET",
     headers: {
@@ -41,34 +41,34 @@ export function pullNumber(url: string): number {
   return Number(match[1]);
 }
 
-export async function openPullRequest(input: { branch: string; title: string; body: string }): Promise<string> {
-  const created = await github<Pull>("/pulls", {
+export async function openPullRequest(repo: string, input: { branch: string; title: string; body: string }): Promise<string> {
+  const created = await github<Pull>(repo, "/pulls", {
     method: "POST",
     body: { title: input.title, head: input.branch, base: "main", body: input.body },
   });
   if (created.status === 201 && created.data.html_url) return created.data.html_url;
   if (created.status === 422) {
-    const { owner } = repoSlug();
+    const { owner } = repoSlug(repo);
     const head = encodeURIComponent(`${owner}:${input.branch}`);
-    const existing = await github<Pull[]>(`/pulls?head=${head}&state=open`);
+    const existing = await github<Pull[]>(repo, `/pulls?head=${head}&state=open`);
     const url = existing.data[0]?.html_url;
     if (existing.status === 200 && url) return url;
   }
   throw new Error(`Could not open the pull request (${created.status}).`);
 }
 
-export async function mergePullRequest(url: string): Promise<string> {
+export async function mergePullRequest(repo: string, url: string): Promise<string> {
   const number = pullNumber(url);
-  const current = await github<Pull>(`/pulls/${number}`);
+  const current = await github<Pull>(repo, `/pulls/${number}`);
   if (current.status === 200 && current.data.merged && current.data.merge_commit_sha) {
     return current.data.merge_commit_sha;
   }
-  const merged = await github<{ sha?: string; merged?: boolean }>(`/pulls/${number}/merge`, {
+  const merged = await github<{ sha?: string; merged?: boolean }>(repo, `/pulls/${number}/merge`, {
     method: "PUT",
     body: { merge_method: "squash" },
   });
   if ((merged.status === 200 || merged.status === 201) && merged.data.sha) return merged.data.sha;
-  const retry = await github<{ sha?: string; message?: string }>(`/pulls/${number}/merge`, {
+  const retry = await github<{ sha?: string; message?: string }>(repo, `/pulls/${number}/merge`, {
     method: "PUT",
     body: { merge_method: "merge" },
   });
@@ -77,9 +77,9 @@ export async function mergePullRequest(url: string): Promise<string> {
   throw new Error(`Could not merge the pull request (${merged.status}). ${oneLine(message)}`.trim());
 }
 
-export async function closePullRequest(url: string): Promise<void> {
+export async function closePullRequest(repo: string, url: string): Promise<void> {
   const number = pullNumber(url);
-  const closed = await github(`/pulls/${number}`, { method: "PATCH", body: { state: "closed" } });
+  const closed = await github(repo, `/pulls/${number}`, { method: "PATCH", body: { state: "closed" } });
   if (closed.status !== 200) throw new Error(`Could not close the pull request (${closed.status}).`);
 }
 
@@ -87,8 +87,8 @@ type CommitFile = { filename: string; status: string; previous_filename?: string
 type Commit = { sha: string; parents: { sha: string }[]; files?: CommitFile[] };
 type Content = { sha?: string; content?: string };
 
-async function fileOn(path: string, ref: string): Promise<Content | null> {
-  const res = await github<Content>(`/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodeURIComponent(ref)}`);
+async function fileOn(repo: string, path: string, ref: string): Promise<Content | null> {
+  const res = await github<Content>(repo, `/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodeURIComponent(ref)}`);
   return res.status === 200 ? res.data : null;
 }
 
@@ -97,12 +97,12 @@ const encode = (text: string): string => Buffer.from(text, "utf8").toString("bas
 
 /** Undo only this change's own lines, the way `git revert` does: the reverse of the change is merged into the
  *  file as it is now, so later changes to the same file stay. Returns the last commit made on main. */
-export async function revertPullRequestOnMain(url: string): Promise<string | null> {
+export async function revertPullRequestOnMain(repo: string, url: string): Promise<string | null> {
   const number = pullNumber(url);
-  const pull = await github<Pull>(`/pulls/${number}`);
+  const pull = await github<Pull>(repo, `/pulls/${number}`);
   const mergeSha = pull.data.merge_commit_sha;
   if (pull.status !== 200 || !pull.data.merged || !mergeSha) return null;
-  const commit = await github<Commit>(`/commits/${mergeSha}`);
+  const commit = await github<Commit>(repo, `/commits/${mergeSha}`);
   const parent = commit.data.parents?.[0]?.sha;
   if (commit.status !== 200 || !parent) throw new Error("Could not read the change to undo.");
   let last: string | null = null;
@@ -110,9 +110,9 @@ export async function revertPullRequestOnMain(url: string): Promise<string | nul
     const path = file.filename;
     const encoded = path.split("/").map(encodeURIComponent).join("/");
     const message = `Undo #${number}: ${path}`;
-    const beforeText = decode(await fileOn(file.previous_filename ?? path, parent));
-    const afterText = decode(await fileOn(path, mergeSha));
-    const nowFile = await fileOn(path, "main");
+    const beforeText = decode(await fileOn(repo, file.previous_filename ?? path, parent));
+    const afterText = decode(await fileOn(repo, path, mergeSha));
+    const nowFile = await fileOn(repo, path, "main");
     const nowText = decode(nowFile);
     let next: string | null;
     if (nowText === afterText) {
@@ -129,8 +129,8 @@ export async function revertPullRequestOnMain(url: string): Promise<string | nul
     if (next === nowText) continue;
     const res =
       next == null
-        ? await github<{ commit?: { sha?: string } }>(`/contents/${encoded}`, { method: "DELETE", body: { message, sha: nowFile?.sha, branch: "main" } })
-        : await github<{ commit?: { sha?: string } }>(`/contents/${encoded}`, {
+        ? await github<{ commit?: { sha?: string } }>(repo, `/contents/${encoded}`, { method: "DELETE", body: { message, sha: nowFile?.sha, branch: "main" } })
+        : await github<{ commit?: { sha?: string } }>(repo, `/contents/${encoded}`, {
             method: "PUT",
             body: { message, content: encode(next), sha: nowFile?.sha, branch: "main" },
           });

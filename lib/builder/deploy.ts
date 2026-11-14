@@ -29,9 +29,9 @@ function isFailed(d: Deployment): boolean {
   return state === "ERROR" || state === "CANCELED";
 }
 
-async function listDeployments(query: Record<string, string>): Promise<Deployment[]> {
+async function listDeployments(projectId: string, query: Record<string, string>): Promise<Deployment[]> {
   const url = new URL("https://api.vercel.com/v7/deployments");
-  url.searchParams.set("projectId", required("VERCEL_PROJECT_ID_DISPATCH"));
+  url.searchParams.set("projectId", projectId);
   url.searchParams.set("teamId", required("VERCEL_TEAM_ID"));
   for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
   const res = await fetch(url, {
@@ -55,6 +55,7 @@ function matches(d: Deployment, filter: { sha?: string; branch?: string }): bool
 }
 
 export async function waitForDeploy(filter: {
+  projectId: string;
   sha?: string;
   branch?: string;
   target?: "production";
@@ -66,7 +67,7 @@ export async function waitForDeploy(filter: {
     if (filter.target) query.target = filter.target;
     if (filter.sha) query.sha = filter.sha;
     if (filter.branch) query.branch = filter.branch;
-    const listed = await listDeployments(query);
+    const listed = await listDeployments(filter.projectId, query);
     const known = listed.filter((d) => matches(d, filter) === true);
     const unknown = listed.filter((d) => matches(d, filter) === null);
     const hits = known.length > 0 ? known : unknown;
@@ -78,37 +79,8 @@ export async function waitForDeploy(filter: {
   throw new Error("The deploy did not finish in time.");
 }
 
-export async function previousProductionDeployment(): Promise<{ id: string; url: string }> {
-  const listed = await listDeployments({ target: "production", state: "READY", limit: "10" });
-  const ready = listed.filter(isReady).sort((a, b) => (b.created ?? 0) - (a.created ?? 0));
-  const previous = ready[1];
-  if (!previous?.url) throw new Error("There is no earlier production deploy to restore.");
-  return { id: deploymentId(previous), url: `https://${previous.url}` };
-}
-
-export async function rollbackTo(deploymentId: string): Promise<void> {
-  const projectId = required("VERCEL_PROJECT_ID_DISPATCH");
-  const url = new URL(`https://api.vercel.com/v1/projects/${projectId}/rollback/${deploymentId}`);
-  url.searchParams.set("teamId", required("VERCEL_TEAM_ID"));
-  url.searchParams.set("description", "Undo a live change");
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${vercelAuthToken()}`,
-      "Content-Type": "application/json",
-    },
-    body: "{}",
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Could not restore the previous deploy (${res.status}). ${oneLine(redact(text))}`);
-  }
-}
-
 /** Make this deploy the live production deploy. Needed after a rollback, which stops new merges from going live on their own. */
-export async function promoteDeployment(deploymentId: string): Promise<void> {
-  const projectId = required("VERCEL_PROJECT_ID_DISPATCH");
+export async function promoteDeployment(projectId: string, deploymentId: string): Promise<void> {
   const url = new URL(`https://api.vercel.com/v10/projects/${projectId}/promote/${deploymentId}`);
   url.searchParams.set("teamId", required("VERCEL_TEAM_ID"));
   const res = await fetch(url, {

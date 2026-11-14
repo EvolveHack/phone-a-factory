@@ -1,4 +1,5 @@
 import { Sandbox } from "@vercel/sandbox";
+import type { Product } from "@/contract/products";
 import { repoSlug, required, sandboxCredentials } from "@/lib/builder/env";
 import { redact } from "@/lib/builder/text";
 
@@ -28,7 +29,7 @@ export async function findRepoDir(sandbox: Sandbox, repoName: string): Promise<s
   const names = listed.split("\n").map((line) => line.trim());
   if (names.includes(repoName)) return repoName;
   if (names.includes("package.json")) return ".";
-  throw new Error("Dispatch Board was not in the sandbox.");
+  throw new Error("The repository was not in the sandbox.");
 }
 
 export async function absoluteDir(sandbox: Sandbox, cwd: string): Promise<string> {
@@ -39,23 +40,24 @@ export async function absoluteDir(sandbox: Sandbox, cwd: string): Promise<string
 }
 
 /** Put the token on the remote only while fetching or pushing, then take it off before the agent runs. */
-export async function setOrigin(sandbox: Sandbox, cwd: string, withToken: boolean): Promise<void> {
-  const { full } = repoSlug();
+export async function setOrigin(sandbox: Sandbox, cwd: string, repo: string, withToken: boolean): Promise<void> {
+  const { full } = repoSlug(repo);
   const url = withToken
     ? `https://x-access-token:${required("GITHUB_TOKEN")}@github.com/${full}.git`
     : `https://github.com/${full}.git`;
   const result = await sandbox.runCommand({ cmd: "git", args: ["remote", "set-url", "origin", url], cwd });
-  if (result.exitCode !== 0) throw new Error("Could not sign in to the Dispatch Board repository.");
+  if (result.exitCode !== 0) throw new Error(`Could not sign in to the ${full} repository.`);
 }
 
-export async function createBuildSandbox(name: string): Promise<Sandbox> {
+/** Builds start from the snapshot of the product's repo, named by product.snapshotEnv. */
+export async function createBuildSandbox(name: string, product: Product): Promise<Sandbox> {
   const creds = sandboxCredentials();
   return Sandbox.create({
     name,
     timeout: BUILD_TIMEOUT_MS,
     resources: { vcpus: 4 },
     persistent: false,
-    source: { type: "snapshot", snapshotId: required("SANDBOX_SNAPSHOT_ID") },
+    source: { type: "snapshot", snapshotId: required(product.snapshotEnv) },
     env: { ANTHROPIC_API_KEY: required("ANTHROPIC_API_KEY") },
     ...(creds ?? {}),
   });

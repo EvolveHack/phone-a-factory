@@ -1,13 +1,27 @@
-// Run once: npx tsx scripts/sandbox-snapshot.ts
-// Prints the snapshot id. Set SANDBOX_SNAPSHOT_ID to that id before builds run.
+// Run once per repo:
+//   npx tsx scripts/sandbox-snapshot.ts                 (EvolveHack/dispatch-board)
+//   npx tsx scripts/sandbox-snapshot.ts factory-apps    (EvolveHack/factory-apps)
+// Prints the snapshot id, then the env var to set it in (the product registry's snapshotEnv for that repo).
 import { Sandbox } from "@vercel/sandbox";
+import { PRODUCTS } from "@/contract/products";
 import { repoSlug, required, sandboxCredentials } from "@/lib/builder/env";
 import { absoluteDir, commandMust, findRepoDir, setOrigin } from "@/lib/builder/sandbox";
 
 const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
 
+/** "factory-apps" or "EvolveHack/factory-apps". Default: Dispatch Board's repo. */
+function repoFromArgs(): string {
+  const arg = process.argv[2]?.trim() || PRODUCTS.freight.repo;
+  const repo = arg.includes("/") ? arg : `${PRODUCTS.freight.repo.split("/")[0]}/${arg}`;
+  if (!Object.values(PRODUCTS).some((p) => p.repo === repo)) {
+    throw new Error(`${repo} is not a repo in the product registry.`);
+  }
+  return repo;
+}
+
 async function main() {
-  const { full, name } = repoSlug();
+  const repo = repoFromArgs();
+  const { full, name } = repoSlug(repo);
   const creds = sandboxCredentials();
   const sandbox = await Sandbox.create({
     name: `paf-snapshot-${Date.now().toString(36)}`,
@@ -51,10 +65,12 @@ async function main() {
       "Could not install Chromium.",
     );
     await commandMust(sandbox, { cmd: "bash", args: ["-c", "command -v claude"], cwd }, "Claude Code is not on PATH.");
-    await setOrigin(sandbox, abs, false);
+    await setOrigin(sandbox, abs, repo, false);
     const snapshot = await sandbox.snapshot({ expiration: FOURTEEN_DAYS_MS });
     saved = true;
+    const envName = Object.values(PRODUCTS).find((p) => p.repo === repo)!.snapshotEnv;
     console.log(snapshot.snapshotId);
+    console.error(`Set ${envName} to that id on the phone-a-factory Vercel project.`);
   } finally {
     if (!saved) await sandbox.stop().catch(() => undefined);
   }

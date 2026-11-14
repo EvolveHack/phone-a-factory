@@ -110,17 +110,17 @@ export async function claimNextQueued(max = MAX_PARALLEL_BUILDS): Promise<Factor
   }) as Promise<FactoryRequest | null>;
 }
 
-let memLock: Promise<unknown> = Promise.resolve();
+const memLocks = new Map<string, Promise<unknown>>();
 
-/** Run `fn` while no other merge runs, so changes reach main and production one at a time. */
-export async function withMergeLock<T>(fn: () => Promise<T>): Promise<T> {
+/** Run `fn` while no other merge to the same repo runs, so changes reach that repo's main and production one at a time. */
+export async function withMergeLock<T>(repo: string, fn: () => Promise<T>): Promise<T> {
   if (!sql) {
-    const run = memLock.then(fn, fn);
-    memLock = run.catch(() => undefined);
+    const run = (memLocks.get(repo) ?? Promise.resolve()).then(fn, fn);
+    memLocks.set(repo, run.catch(() => undefined));
     return run;
   }
   return sql.begin(async (tx) => {
-    await tx`select pg_advisory_xact_lock(4202)`;
+    await tx`select pg_advisory_xact_lock(4202, hashtext(${repo}))`;
     return fn();
   }) as Promise<T>;
 }
