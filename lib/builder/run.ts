@@ -83,7 +83,7 @@ async function changedFiles(ctx: Ctx): Promise<string[]> {
 async function prepareRepo(ctx: Ctx): Promise<void> {
   if (!ctx.sandbox) throw new Error("The sandbox is not running.");
   const branch = branchName(ctx.request.id);
-  await commandMust(ctx.sandbox, { cmd: "git", args: ["config", "user.email", "builder@phone-a-factory.local"], cwd: ctx.cwd }, "Could not set the git email.");
+  await commandMust(ctx.sandbox, { cmd: "git", args: ["config", "user.email", process.env.BUILDER_GIT_EMAIL?.trim() || "builder@phone-a-factory.local"], cwd: ctx.cwd }, "Could not set the git email.");
   await commandMust(ctx.sandbox, { cmd: "git", args: ["config", "user.name", "Phone a factory"], cwd: ctx.cwd }, "Could not set the git name.");
   await setOrigin(ctx.sandbox, ctx.cwd, true);
   await commandMust(ctx.sandbox, { cmd: "git", args: ["fetch", "origin", "+refs/heads/main:refs/remotes/origin/main"], cwd: ctx.cwd, timeoutMs: 60_000 }, "Could not fetch Dispatch Board.");
