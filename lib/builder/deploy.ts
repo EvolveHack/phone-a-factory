@@ -105,3 +105,20 @@ export async function rollbackTo(deploymentId: string): Promise<void> {
     throw new Error(`Could not restore the previous deploy (${res.status}). ${oneLine(redact(text))}`);
   }
 }
+
+/** Make this deploy the live production deploy. Needed after a rollback, which stops new merges from going live on their own. */
+export async function promoteDeployment(deploymentId: string): Promise<void> {
+  const projectId = required("VERCEL_PROJECT_ID_DISPATCH");
+  const url = new URL(`https://api.vercel.com/v10/projects/${projectId}/promote/${deploymentId}`);
+  url.searchParams.set("teamId", required("VERCEL_TEAM_ID"));
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${vercelAuthToken()}`, "Content-Type": "application/json" },
+    body: "{}",
+    cache: "no-store",
+  });
+  if (!res.ok && res.status !== 409) {
+    const text = await res.text();
+    throw new Error(`Could not make the new deploy live (${res.status}). ${oneLine(redact(text))}`);
+  }
+}

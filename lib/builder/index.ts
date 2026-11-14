@@ -1,7 +1,7 @@
 // OWNED BY W2. Signatures are fixed in contract/api.md.
 import { linkPullRequest } from "@/lib/factory8090";
-import { previousProductionDeployment, rollbackTo, waitForDeploy } from "@/lib/builder/deploy";
-import { closePullRequest, mergePullRequest } from "@/lib/builder/github";
+import { previousProductionDeployment, promoteDeployment, rollbackTo, waitForDeploy } from "@/lib/builder/deploy";
+import { closePullRequest, mergePullRequest, revertPullRequestOnMain } from "@/lib/builder/github";
 import { stopSandbox } from "@/lib/builder/sandbox";
 import { errorText, sandboxNameFromLog } from "@/lib/builder/text";
 import { addStep, getRequest, getState, setStatus } from "@/lib/store";
@@ -48,7 +48,8 @@ export async function promote(requestId: string): Promise<void> {
   try {
     await addStep({ requestId, step: "promoted", status: "running", log: "Merging the pull request." });
     const sha = await mergePullRequest(request.pullRequestUrl);
-    await waitForDeploy({ sha, target: "production", timeoutMs: 180_000 });
+    const deploy = await waitForDeploy({ sha, target: "production", timeoutMs: 180_000 });
+    await promoteDeployment(deploy.id);
     await addStep({ requestId, step: "promoted", status: "passed", log: "Production is updated." });
     await setStatus(requestId, "live");
     await linkWorkOrder(request);
@@ -68,7 +69,16 @@ export async function undo(requestId: string): Promise<void> {
   if (!request) throw new Error("This request was not found.");
   const previous = await previousProductionDeployment();
   await rollbackTo(previous.id);
-  await setStatus(requestId, "undone", "Production was restored to the previous deploy.");
+  let reason = "Production was restored to the previous deploy.";
+  if (request.pullRequestUrl) {
+    try {
+      await revertPullRequestOnMain(request.pullRequestUrl);
+      reason = "Production was restored, and the change was removed from the code.";
+    } catch (error) {
+      reason = `Production was restored, but the code still has the change. ${errorText(error)}`;
+    }
+  }
+  await setStatus(requestId, "undone", reason);
 }
 
 export async function veto(requestId: string): Promise<void> {

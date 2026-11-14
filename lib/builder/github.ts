@@ -81,3 +81,42 @@ export async function closePullRequest(url: string): Promise<void> {
   const closed = await github(`/pulls/${number}`, { method: "PATCH", body: { state: "closed" } });
   if (closed.status !== 200) throw new Error(`Could not close the pull request (${closed.status}).`);
 }
+
+type CommitFile = { filename: string; status: string; previous_filename?: string };
+type Commit = { sha: string; parents: { sha: string }[]; files?: CommitFile[] };
+type Content = { sha?: string; content?: string };
+
+async function fileOn(path: string, ref: string): Promise<Content | null> {
+  const res = await github<Content>(`/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodeURIComponent(ref)}`);
+  return res.status === 200 ? res.data : null;
+}
+
+/** Put every file a merged pull request changed back to how it was before, as new commits on main. */
+export async function revertPullRequestOnMain(url: string): Promise<void> {
+  const number = pullNumber(url);
+  const pull = await github<Pull>(`/pulls/${number}`);
+  const mergeSha = pull.data.merge_commit_sha;
+  if (pull.status !== 200 || !pull.data.merged || !mergeSha) return;
+  const commit = await github<Commit>(`/commits/${mergeSha}`);
+  const parent = commit.data.parents?.[0]?.sha;
+  if (commit.status !== 200 || !parent) throw new Error("Could not read the change to undo.");
+  for (const file of commit.data.files ?? []) {
+    const paths = file.previous_filename ? [file.previous_filename, file.filename] : [file.filename];
+    for (const path of paths) {
+      const before = await fileOn(path, parent);
+      const now = await fileOn(path, "main");
+      const encoded = path.split("/").map(encodeURIComponent).join("/");
+      const message = `Undo #${number}: restore ${path}`;
+      if (before?.content) {
+        const res = await github(`/contents/${encoded}`, {
+          method: "PUT",
+          body: { message, content: before.content.replace(/\n/g, ""), sha: now?.sha, branch: "main" },
+        });
+        if (res.status !== 200 && res.status !== 201) throw new Error(`Could not restore ${path} (${res.status}).`);
+      } else if (now?.sha) {
+        const res = await github(`/contents/${encoded}`, { method: "DELETE", body: { message, sha: now.sha, branch: "main" } });
+        if (res.status !== 200) throw new Error(`Could not remove ${path} (${res.status}).`);
+      }
+    }
+  }
+}
