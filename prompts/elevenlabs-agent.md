@@ -24,3 +24,10 @@ Rules:
 - Method: POST, header `x-tool-secret: <ELEVENLABS_TOOL_SECRET>`
 - Body parameters (all strings, all required except caller_phone): `name`, `company`, `role`, `ask`, `caller_words`, `caller_phone` (system variable for the caller's number, if available).
 - Wait for the response before speaking. Timeout 20 seconds.
+
+## Status (set up 11-13)
+- Done in ElevenLabs: first message, system prompt, and the End conversation system tool. Published.
+- Not done: the `submit_request` webhook tool. The ElevenLabs form did not save it (no request sent, no error shown).
+  Add it by hand: Tools, Add tool, Webhook. Name `submit_request`. Method POST. URL `https://phone-a-factory.vercel.app/api/voice/submit-request`.
+  Body parameters (all string, all required, value type LLM Prompt): `name`, `company`, `role`, `ask`, `caller_words`.
+  Header `x-tool-secret` with the same value as `ELEVENLABS_TOOL_SECRET` in Vercel. Then Publish.

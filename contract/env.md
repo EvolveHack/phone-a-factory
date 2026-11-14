@@ -5,7 +5,7 @@ Only the owner edits this file. Read through `process.env`. Never hard-code a ke
 | Name | Used by | What |
 |---|---|---|
 | `DATABASE_URL` | all | Neon Postgres `neon-yellow-lantern` (set in Vercel; tables already created). Run `vercel env pull .env.local` to use it locally. If missing, `lib/store.ts` uses an in-memory store with fixtures (local dev only). |
-| `AI_GATEWAY_API_KEY` | W1, W4 | Vercel AI Gateway. Classification uses a Claude Sonnet model; W1 confirms the exact gateway model id. |
+| `AI_GATEWAY_API_KEY` | W1, W4 | Not needed on Vercel: AI Gateway authenticates with the project's OIDC token automatically. Locally, `vercel env pull .env.local` provides `VERCEL_OIDC_TOKEN`. Classification uses a Claude Sonnet model; W1 confirms the exact gateway model id. |
 | `ELEVENLABS_TOOL_SECRET` | W1 | Shared secret the ElevenLabs tool sends in `x-tool-secret`. |
 | `FACTORY_8090_API_KEY` | W1 | 8090 External API key (`sofa-ext-...`). |
 | `FACTORY_8090_BASE_URL` | W1 | `https://api.factory.8090.dev/v2/external-api` |
