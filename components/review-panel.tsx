@@ -19,13 +19,12 @@ export function ReviewPanel({
   return (
     <section className="flex h-full min-h-0 flex-col rounded-xl bg-[#12141a] p-4" data-floor-region="review">
       <h2 className="shrink-0 pb-3 text-[28px] font-semibold">Review</h2>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
         {empty ? <p className="text-[22px]">No review is waiting.</p> : null}
-        <div className="flex flex-col gap-3">
-          {waiting.map((request) => (
-            <WaitingCard key={request.id} request={request} onAction={onAction} />
-          ))}
-        </div>
+        {waiting.length === 0 && !empty ? <p className="text-[22px]">No ask is waiting for approval.</p> : null}
+        {waiting.map((request) => (
+          <WaitingCard key={request.id} request={request} onAction={onAction} />
+        ))}
       </div>
       {building.length + live.length > 0 ? (
         <div className="mt-2 max-h-[42%] shrink-0 space-y-2 overflow-y-auto">
@@ -69,24 +68,28 @@ function WaitingCard({
   }
 
   return (
-    <article data-request-id={request.id} data-status={request.status} className="flex flex-col gap-2 rounded-lg bg-white/10 p-3">
-      <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-[24px] font-semibold">{customerName(request.customer)}</h3>
-        {request.rule ? <span className="text-[18px] font-semibold">{request.rule.rule}</span> : null}
+    <article data-request-id={request.id} data-status={request.status} className="flex min-h-0 flex-1 flex-col gap-2 rounded-lg bg-white/10 p-3">
+      <div className="flex gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <h3 className="text-[24px] font-semibold">{customerName(request.customer)}</h3>
+            {request.rule ? <span className="text-[18px] font-semibold">{request.rule.rule}</span> : null}
+          </div>
+          <p className="mt-1 text-[22px] leading-snug">{request.callerWords}</p>
+        </div>
+        <div className="h-24 w-40 shrink-0">
+          <Preview request={request} />
+        </div>
       </div>
-      <p className="text-[22px] leading-snug">{request.callerWords}</p>
       {request.rule ? (
-        <>
-          <p>
-            <span className={request.rule.ending === "goes_live" ? "rounded-full bg-emerald-400 px-3 py-1 text-[18px] font-semibold text-black" : "rounded-full bg-amber-300 px-3 py-1 text-[18px] font-semibold text-black"}>
-              {endingBadge(request.rule.ending, request.rule.approver)}
-            </span>
-          </p>
-          <p className="text-[18px] leading-snug">{request.rule.reason}</p>
-        </>
+        <p>
+          <span className={request.rule.ending === "goes_live" ? "rounded-full bg-emerald-400 px-3 py-1 text-[18px] font-semibold text-black" : "rounded-full bg-amber-300 px-3 py-1 text-[18px] font-semibold text-black"}>
+            {endingBadge(request.rule.ending, request.rule.approver)}
+          </span>
+        </p>
       ) : null}
-      <Preview request={request} />
-      <div className="flex items-center gap-2">
+      {request.rule?.reason ? <p className="text-[18px] leading-snug">{request.rule.reason}</p> : null}
+      <div className="flex shrink-0 items-center gap-2">
         <input
           value={reason}
           onChange={(event) => setReason(event.target.value)}
@@ -139,9 +142,9 @@ function Preview({ request }: { request: FactoryRequest }) {
   }
   if (request.previewUrl) {
     return (
-      <div className="flex flex-col gap-1">
-        <iframe title="Preview" src={request.previewUrl} className="h-20 w-full rounded-md border-0 bg-black" />
-        <a href={request.previewUrl} target="_blank" rel="noreferrer" className="text-[16px] underline">
+      <div className="flex h-full flex-col">
+        <iframe title="Preview" src={request.previewUrl} className="min-h-0 w-full flex-1 rounded-md border-0 bg-black" />
+        <a href={request.previewUrl} target="_blank" rel="noreferrer" className="truncate text-[14px] underline">
           Open the preview
         </a>
       </div>
@@ -154,7 +157,7 @@ function Shot({ src, label }: { src: string; label: string }) {
   return (
     <figure>
       {/* External preview shots are not on a configured image host. */}
-      <img src={src} alt={label} className="h-20 w-full rounded-md bg-black object-contain" />
+      <img src={src} alt={label} className="h-full max-h-28 w-full rounded-md bg-black object-contain" />
       <figcaption className="text-[14px] text-white/70">{label}</figcaption>
     </figure>
   );
@@ -177,7 +180,7 @@ function ActionStrip({
   const [error, setError] = useState(false);
 
   return (
-    <div data-request-id={request.id} data-status={request.status} className="flex items-center gap-3 rounded-lg bg-white/10 px-3 py-2">
+    <div data-request-id={request.id} data-status={request.status} className="flex items-center gap-3 rounded-lg bg-white/10 px-3 py-1">
       <div className="min-w-0 flex-1">
         <p className="truncate text-[18px] font-semibold">
           {customerName(request.customer)} · {STATUS_LABEL[request.status]}
@@ -196,7 +199,7 @@ function ActionStrip({
             .catch(() => setError(true))
             .finally(() => setPending(false));
         }}
-        className={`h-12 shrink-0 rounded-lg px-4 text-[20px] font-semibold disabled:opacity-50 ${tone}`}
+        className={`h-10 shrink-0 rounded-lg px-4 text-[18px] font-semibold disabled:opacity-50 ${tone}`}
       >
         {button}
       </button>
