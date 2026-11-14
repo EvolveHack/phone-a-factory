@@ -11,6 +11,5 @@ export const metadata: Metadata = {
 
 export default async function Page() {
   const initial = await getState();
-  const boardUrl = process.env.NEXT_PUBLIC_DISPATCH_BOARD_PROD_URL?.trim() ?? "";
-  return <FloorScreen initial={initial} boardUrl={boardUrl} />;
+  return <FloorScreen initial={initial} />;
 }

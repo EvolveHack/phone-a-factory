@@ -7,7 +7,6 @@ import type {
   Status,
 } from "@/contract/types";
 import { APPROVERS } from "@/contract/types";
-import { CUSTOMERS } from "@/contract/view";
 
 export const PHONE_LINE = "Call +1 408 762 6927";
 
@@ -63,10 +62,6 @@ export const STEP_MARK: Record<BuildStep["status"], string> = {
   failed: "Failed",
 };
 
-export function customerName(id: FactoryRequest["customer"]): string {
-  return CUSTOMERS[id].name;
-}
-
 export function endingBadge(ending: Ending, approver: ApproverRole | null): string {
   if (ending === "goes_live") return "Goes live";
   if (!approver) return "Needs a person";
@@ -108,18 +103,6 @@ export function visibleSteps(steps: BuildStep[], requestId: string): BuildStep[]
     const step = latest.get(name);
     return step ? [step] : [];
   });
-}
-
-export function safeBoardBase(boardUrl: string): string | null {
-  const trimmed = boardUrl.trim();
-  if (!trimmed) return null;
-  try {
-    const url = new URL(trimmed);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    return `${url.origin}${url.pathname.replace(/\/$/, "")}`;
-  } catch {
-    return null;
-  }
 }
 
 const PARALLEL = 3;

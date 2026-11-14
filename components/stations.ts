@@ -1,5 +1,5 @@
 import type { FactoryRequest, Status } from "@/contract/types";
-import { CUSTOMER_IDS, type CustomerId } from "@/contract/view";
+import { CUSTOMER_IDS, type CustomerId } from "@/contract/products";
 
 export type StationId = "call" | "rules" | "build" | "checks" | "gate" | "live";
 
@@ -31,9 +31,9 @@ export function stationOf(request: FactoryRequest): StationId | null {
 /** Finished tickets that left the line, newest first. */
 export const OFF_LINE: Status[] = ["declined", "rejected", "vetoed", "undone", "failed"];
 
-const HUES = ["#ff3d14", "#3ddc97", "#5b8cff", "#ffb020", "#d46bff", "#2ec5d3", "#ff6fa3", "#a3d93b"];
+const HUES = ["#ff3d14", "#3ddc97", "#5b8cff", "#ffb020", "#d46bff", "#2ec5d3", "#ff6fa3", "#a3d93b", "#e8e36b", "#9b7bff"];
 
-/** A steady color per customer, so 20 customers stay easy to tell apart. */
+/** A steady color per customer: one hue for each of the ten customers, in registry order. */
 export function customerColor(id: CustomerId): string {
   const index = CUSTOMER_IDS.indexOf(id);
   const at = index >= 0 ? index : [...id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);

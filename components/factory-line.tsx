@@ -12,13 +12,11 @@ export function FactoryLine({
   requests,
   steps,
   now,
-  boardUrl,
   onAction,
 }: {
   requests: FactoryRequest[];
   steps: BuildStep[];
   now: number | null;
-  boardUrl: string | null;
   onAction: (id: string, action: TicketAction, body?: { reason: string }) => Promise<void>;
 }) {
   const byStation = new Map<StationId, FactoryRequest[]>(STATIONS.map((s) => [s.id, []]));
@@ -52,7 +50,6 @@ export function FactoryLine({
                       steps={steps}
                       now={now}
                       wait={queueWait(request, requests)}
-                      boardUrl={boardUrl}
                       onAction={onAction}
                     />
                   ))}

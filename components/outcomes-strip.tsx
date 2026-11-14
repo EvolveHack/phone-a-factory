@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import type { FactoryRequest } from "@/contract/types";
-import { CUSTOMERS } from "@/contract/view";
+import { customerInfo } from "@/contract/products";
 import { STATUS_LABEL } from "./floor-copy";
 import { customerColor, OFF_LINE } from "./stations";
 
@@ -28,7 +28,7 @@ export function OutcomesStrip({ requests }: { requests: FactoryRequest[] }) {
             title={r.statusReason ?? undefined}
           >
             <span className="h-2 w-2 rounded-full" style={{ background: customerColor(r.customer) }} aria-hidden />
-            <span className="text-white/60">{CUSTOMERS[r.customer].name}</span>
+            <span className="text-white/60">{customerInfo(r.customer).name}</span>
             <span className="max-w-[260px] truncate">{r.ask}</span>
             <span className="font-semibold text-white/70">{STATUS_LABEL[r.status]}</span>
           </motion.p>

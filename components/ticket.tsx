@@ -3,12 +3,12 @@
 import { motion } from "motion/react";
 import { useState } from "react";
 import type { BuildStep, FactoryRequest } from "@/contract/types";
-import { CUSTOMERS } from "@/contract/view";
+import { customerInfo, productOf } from "@/contract/products";
 import { endingBadge, secondsSince, STEP_LABEL, visibleSteps } from "./floor-copy";
 import type { StationId } from "./stations";
 import { customerColor } from "./stations";
 
-export type TicketAction = "approve" | "decline" | "undo" | "veto";
+export type TicketAction = "approve" | "decline" | "undo" | "veto" | "rollout";
 type OnAction = (id: string, action: TicketAction, body?: { reason: string }) => Promise<void>;
 
 const TOTAL_STEPS = 7;
@@ -19,7 +19,6 @@ export function Ticket({
   steps,
   now,
   wait,
-  boardUrl,
   onAction,
 }: {
   request: FactoryRequest;
@@ -27,7 +26,6 @@ export function Ticket({
   steps: BuildStep[];
   now: number | null;
   wait: string | null;
-  boardUrl: string | null;
   onAction: OnAction;
 }) {
   const color = customerColor(request.customer);
@@ -52,11 +50,12 @@ export function Ticket({
       {station === "live" ? <LiveBurst /> : null}
 
       <header className="flex items-baseline justify-between gap-2 pl-1.5">
-        <p className="truncate text-[13px] font-semibold uppercase tracking-[0.14em]" style={{ color }}>
-          {CUSTOMERS[request.customer].name}
-        </p>
+        <p className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-white/45">{productOf(request.customer).name}</p>
         <p className="shrink-0 text-[13px] text-white/50">{since}</p>
       </header>
+      <p className="truncate pl-1.5 text-[13px] font-semibold uppercase tracking-[0.14em]" style={{ color }}>
+        {customerInfo(request.customer).name}
+      </p>
 
       <p className="mt-1.5 line-clamp-3 pl-1.5 font-[family-name:var(--font-display)] text-[19px] leading-snug text-white">
         {request.ask}
@@ -91,7 +90,7 @@ export function Ticket({
         </div>
       ) : null}
       {station === "gate" ? <GateActions request={request} onAction={onAction} /> : null}
-      {station === "live" ? <LiveFooter request={request} boardUrl={boardUrl} onAction={onAction} /> : null}
+      {station === "live" ? <LiveFooter request={request} onAction={onAction} /> : null}
       {station === "build" || station === "checks" ? (
         <VetoButton id={request.id} onAction={onAction} />
       ) : null}
@@ -180,9 +179,11 @@ function GateActions({ request, onAction }: { request: FactoryRequest; onAction:
   );
 }
 
-function LiveFooter({ request, boardUrl, onAction }: { request: FactoryRequest; boardUrl: string | null; onAction: OnAction }) {
+function LiveFooter({ request, onAction }: { request: FactoryRequest; onAction: OnAction }) {
   const [pending, setPending] = useState(false);
-  const href = boardUrl ? `${boardUrl}${CUSTOMERS[request.customer].path}` : null;
+  const [rollout, setRollout] = useState<"idle" | "sending" | "sent" | "failed">("idle");
+  const product = productOf(request.customer);
+  const href = `${product.prodUrl}${customerInfo(request.customer).path}`;
   return (
     <div className="mt-2.5 space-y-2 pl-1.5">
       <p className="text-[13px] font-medium text-[#3ddc97]">Other customers unchanged</p>
@@ -191,16 +192,14 @@ function LiveFooter({ request, boardUrl, onAction }: { request: FactoryRequest; 
         <img src={request.screenshotAfterUrl} alt="The change, live" className="h-20 w-full rounded-lg bg-black object-cover object-top" />
       ) : null}
       <div className="flex gap-2">
-        {href ? (
-          <a
-            href={href}
-            target="_blank"
-            rel="noreferrer"
-            className="flex h-9 flex-1 items-center justify-center rounded-lg bg-white text-[15px] font-semibold text-black"
-          >
-            Open board
-          </a>
-        ) : null}
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className="flex h-9 flex-1 items-center justify-center rounded-lg bg-white text-[15px] font-semibold text-black"
+        >
+          Open board
+        </a>
         <button
           type="button"
           data-action="undo"
@@ -214,6 +213,23 @@ function LiveFooter({ request, boardUrl, onAction }: { request: FactoryRequest; 
           {pending ? "Undoing" : "Undo"}
         </button>
       </div>
+      <button
+        type="button"
+        data-action="rollout"
+        disabled={rollout === "sending" || rollout === "sent"}
+        title={`Make this available to every ${product.name} customer. The product owner reviews it first.`}
+        onClick={() => {
+          setRollout("sending");
+          onAction(request.id, "rollout").then(
+            () => setRollout("sent"),
+            () => setRollout("failed"),
+          );
+        }}
+        className="h-9 w-full rounded-lg bg-white/10 text-[15px] font-semibold disabled:opacity-60"
+      >
+        {rollout === "sent" ? "Sent to the product owner" : rollout === "sending" ? "Sending" : "Roll out to everyone"}
+      </button>
+      {rollout === "failed" ? <p className="text-[13px] text-[#ff8a70]">Could not start the rollout.</p> : null}
     </div>
   );
 }

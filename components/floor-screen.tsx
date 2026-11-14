@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { StateSnapshot } from "@/contract/types";
 import { FactoryLine } from "./factory-line";
-import { PHONE_LINE, safeBoardBase } from "./floor-copy";
+import { PHONE_LINE } from "./floor-copy";
 import { OutcomesStrip } from "./outcomes-strip";
 import { ScoreBar } from "./score-bar";
 import type { TicketAction } from "./ticket";
@@ -19,12 +19,11 @@ function useNow(): number | null {
   );
 }
 
-export function FloorScreen({ initial, boardUrl }: { initial: StateSnapshot; boardUrl: string }) {
+export function FloorScreen({ initial }: { initial: StateSnapshot }) {
   const [state, setState] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const gen = useRef(0);
   const now = useNow();
-  const boards = safeBoardBase(boardUrl);
 
   const pull = useCallback(async () => {
     const mine = ++gen.current;
@@ -75,7 +74,7 @@ export function FloorScreen({ initial, boardUrl }: { initial: StateSnapshot; boa
         </p>
       </header>
 
-      <FactoryLine requests={state.requests} steps={state.steps} now={now} boardUrl={boards} onAction={onAction} />
+      <FactoryLine requests={state.requests} steps={state.steps} now={now} onAction={onAction} />
 
       <OutcomesStrip requests={state.requests} />
       {error ? <p className="text-[15px] text-[#ff8a70]">{error}</p> : null}
