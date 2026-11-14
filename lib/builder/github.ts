@@ -92,11 +92,12 @@ async function fileOn(path: string, ref: string): Promise<Content | null> {
 }
 
 /** Put every file a merged pull request changed back to how it was before, as new commits on main. */
-export async function revertPullRequestOnMain(url: string): Promise<void> {
+export async function revertPullRequestOnMain(url: string): Promise<string | null> {
   const number = pullNumber(url);
   const pull = await github<Pull>(`/pulls/${number}`);
   const mergeSha = pull.data.merge_commit_sha;
-  if (pull.status !== 200 || !pull.data.merged || !mergeSha) return;
+  if (pull.status !== 200 || !pull.data.merged || !mergeSha) return null;
+  let last: string | null = null;
   const commit = await github<Commit>(`/commits/${mergeSha}`);
   const parent = commit.data.parents?.[0]?.sha;
   if (commit.status !== 200 || !parent) throw new Error("Could not read the change to undo.");
@@ -108,15 +109,18 @@ export async function revertPullRequestOnMain(url: string): Promise<void> {
       const encoded = path.split("/").map(encodeURIComponent).join("/");
       const message = `Undo #${number}: restore ${path}`;
       if (before?.content) {
-        const res = await github(`/contents/${encoded}`, {
+        const res = await github<{ commit?: { sha?: string } }>(`/contents/${encoded}`, {
           method: "PUT",
           body: { message, content: before.content.replace(/\n/g, ""), sha: now?.sha, branch: "main" },
         });
         if (res.status !== 200 && res.status !== 201) throw new Error(`Could not restore ${path} (${res.status}).`);
+        last = res.data.commit?.sha ?? last;
       } else if (now?.sha) {
-        const res = await github(`/contents/${encoded}`, { method: "DELETE", body: { message, sha: now.sha, branch: "main" } });
+        const res = await github<{ commit?: { sha?: string } }>(`/contents/${encoded}`, { method: "DELETE", body: { message, sha: now.sha, branch: "main" } });
         if (res.status !== 200) throw new Error(`Could not remove ${path} (${res.status}).`);
+        last = res.data.commit?.sha ?? last;
       }
     }
   }
+  return last;
 }

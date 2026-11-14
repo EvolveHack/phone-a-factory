@@ -18,7 +18,7 @@ Only the owner edits this file. All JSON. Types are in `contract/types.ts`.
 ```ts
 // lib/builder/index.ts (W2)
 export async function promote(requestId: string): Promise<void>; // preview -> production, PR merged, 8090 linked
-export async function undo(requestId: string): Promise<void>;    // production back to the previous deploy, status "undone"
+export async function undo(requestId: string): Promise<void>;    // removes only this change from main and makes that deploy live, status "undone"
 export async function veto(requestId: string): Promise<void>;    // stop the running build, status "vetoed"
 
 // lib/factory8090/index.ts (W1)

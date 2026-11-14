@@ -1,6 +1,6 @@
 // OWNED BY W2. Signatures are fixed in contract/api.md.
 import { linkPullRequest } from "@/lib/factory8090";
-import { previousProductionDeployment, promoteDeployment, rollbackTo, waitForDeploy } from "@/lib/builder/deploy";
+import { promoteDeployment, waitForDeploy } from "@/lib/builder/deploy";
 import { closePullRequest, mergePullRequest, revertPullRequestOnMain } from "@/lib/builder/github";
 import { stopSandbox } from "@/lib/builder/sandbox";
 import { errorText, sandboxNameFromLog } from "@/lib/builder/text";
@@ -96,18 +96,16 @@ export async function undo(requestId: string): Promise<void> {
   const request = await getRequest(requestId);
   if (!request) throw new Error("This request was not found.");
   if (request.status !== "live") throw new Error("Only a live change can be undone.");
-  const previous = await previousProductionDeployment();
-  await rollbackTo(previous.id);
-  let reason = "Production was restored to the previous deploy.";
-  if (request.pullRequestUrl) {
-    try {
-      await revertPullRequestOnMain(request.pullRequestUrl);
-      reason = "Production was restored, and the change was removed from the code.";
-    } catch (error) {
-      reason = `Production was restored, but the code still has the change. ${errorText(error)}`;
-    }
-  }
-  await setStatus(requestId, "undone", reason);
+  if (!request.pullRequestUrl) throw new Error("This change has no pull request to undo.");
+  const pullUrl = request.pullRequestUrl;
+  // Take only this change out of the code, then make that deploy live. Other live changes stay.
+  await withMergeLock(async () => {
+    const sha = await revertPullRequestOnMain(pullUrl);
+    if (!sha) return;
+    const deploy = await waitForDeploy({ sha, target: "production", timeoutMs: 180_000 });
+    await promoteDeployment(deploy.id);
+  });
+  await setStatus(requestId, "undone", "The change was removed from the code, and the board was updated. Other changes stay live.");
 }
 
 export async function veto(requestId: string): Promise<void> {
