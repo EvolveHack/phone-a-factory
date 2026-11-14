@@ -67,6 +67,7 @@ export async function promote(requestId: string): Promise<void> {
 export async function undo(requestId: string): Promise<void> {
   const request = await getRequest(requestId);
   if (!request) throw new Error("This request was not found.");
+  if (request.status !== "live") throw new Error("Only a live change can be undone.");
   const previous = await previousProductionDeployment();
   await rollbackTo(previous.id);
   let reason = "Production was restored to the previous deploy.";

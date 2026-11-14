@@ -1,8 +1,8 @@
 import type { Ending, FactoryRequest } from "@/contract/types";
-import { customerName, endingBadge, newestFirst, secondsSince, STATUS_LABEL } from "./floor-copy";
+import { customerName, endingBadge, queueOrder, secondsSince, STATUS_LABEL } from "./floor-copy";
 
 export function QueueList({ requests, now }: { requests: FactoryRequest[]; now: number | null }) {
-  const ordered = newestFirst(requests);
+  const ordered = queueOrder(requests);
   return (
     <section className="flex h-full min-h-0 flex-col rounded-xl bg-[#12141a] p-4" data-floor-region="queue">
       <h2 className="shrink-0 pb-3 text-[28px] font-semibold">Queue</h2>
@@ -55,9 +55,17 @@ function QueueCard({ request, now }: { request: FactoryRequest; now: number | nu
         <span className="text-[18px]">{STATUS_LABEL[request.status]}</span>
       </div>
       {request.rule?.reason ? <p className="mt-1 text-[18px] leading-snug text-white/85">{request.rule.reason}</p> : null}
-      {request.statusReason ? <p className="mt-1 text-[18px] leading-snug">{request.statusReason}</p> : null}
+      {request.statusReason && !sameText(request.statusReason, request.rule?.reason) ? (
+        <p className="mt-1 text-[18px] leading-snug">{request.statusReason}</p>
+      ) : null}
     </article>
   );
+}
+
+function sameText(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const head = (t: string) => t.replace(/\s+/g, " ").trim().slice(0, 80);
+  return head(a) === head(b);
 }
 
 function badgeClass(ending: Ending): string {

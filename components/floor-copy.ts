@@ -75,7 +75,21 @@ export function endingBadge(ending: Ending, approver: ApproverRole | null): stri
 
 export function secondsSince(iso: string, now: number): string {
   const seconds = Math.max(0, Math.floor((now - Date.parse(iso)) / 1000));
-  return seconds === 1 ? "1 second" : `${seconds} seconds`;
+  if (seconds < 60) return `${seconds} sec ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+}
+
+const ACTIVE: Status[] = ["received", "classified", "queued", "building", "checking", "approved", "waiting_for_approval", "live"];
+
+/** Active asks first (newest first), then the newest finished ones, up to `limit` in all. */
+export function queueOrder(requests: FactoryRequest[], limit = 8): FactoryRequest[] {
+  const sorted = newestFirst(requests);
+  const active = sorted.filter((request) => ACTIVE.includes(request.status));
+  const done = sorted.filter((request) => !ACTIVE.includes(request.status));
+  return [...active, ...done].slice(0, Math.max(limit, active.length));
 }
 
 export function formatCallToLive(seconds: number | null): string {

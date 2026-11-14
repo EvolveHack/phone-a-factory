@@ -39,16 +39,14 @@ function BoardFrame({
       className={`relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border-8 bg-black ${flash ? "border-emerald-400" : "border-white/15"}`}
     >
       {flash ? <div className="pointer-events-none absolute inset-0 z-10 animate-pulse border-8 border-emerald-400" /> : null}
-      <div className={`flex h-16 shrink-0 items-center px-4 ${id === "pinecrest" ? "pr-[34rem]" : ""}`}>
-        <h2 className="truncate text-[32px] font-semibold">{name}</h2>
-      </div>
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 overflow-hidden">
         {base ? (
           <iframe
             key={`${id}-${reload}`}
             title={name}
             src={boardSrc(base, CUSTOMERS[id].path, reload)}
-            className="h-full w-full border-0 bg-black"
+            className="origin-top-left border-0 bg-black"
+            style={{ width: "160%", height: "160%", transform: "scale(0.625)" }}
           />
         ) : (
           <div className="grid h-full place-items-center px-6 text-center text-[28px] leading-snug">

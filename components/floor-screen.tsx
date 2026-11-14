@@ -5,7 +5,7 @@ import type { CustomerId } from "@/contract/view";
 import type { StateSnapshot } from "@/contract/types";
 import { BuildPanel } from "./build-panel";
 import { CustomerBoards } from "./customer-boards";
-import { PHONE_LINE, currentBuild, newestFirst } from "./floor-copy";
+import { currentBuild, newestFirst } from "./floor-copy";
 import { QueueList } from "./queue-list";
 import { ReviewPanel, type ReviewAction } from "./review-panel";
 import { ScoreBar } from "./score-bar";
@@ -94,10 +94,7 @@ export function FloorScreen({ initial, boardUrl }: { initial: StateSnapshot; boa
   const requests = newestFirst(state.requests);
 
   return (
-    <main className="relative grid h-screen grid-rows-[minmax(0,1fr)_minmax(0,1fr)_100px] overflow-hidden bg-[#05060a] font-sans text-white">
-      <p className="pointer-events-none absolute right-3 top-3 z-30 whitespace-nowrap bg-[#05060a] px-3 py-1 text-[40px] font-semibold leading-none">
-        {PHONE_LINE}
-      </p>
+    <main className="relative grid h-screen grid-rows-[minmax(0,1.15fr)_minmax(0,1fr)_100px] overflow-hidden bg-[#05060a] font-sans text-white">
       <CustomerBoards boardUrl={boardUrl} flash={flash} reload={reload} />
       <div className="flex min-h-0 flex-col px-3 py-2">
         {state.currentCallTranscript ? (

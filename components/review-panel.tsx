@@ -19,7 +19,7 @@ export function ReviewPanel({
   return (
     <section className="flex h-full min-h-0 flex-col rounded-xl bg-[#12141a] p-4" data-floor-region="review">
       <h2 className="shrink-0 pb-3 text-[28px] font-semibold">Review</h2>
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
         {empty ? <p className="text-[22px]">No review is waiting.</p> : null}
         {waiting.length === 0 && !empty ? <p className="text-[22px]">No ask is waiting for approval.</p> : null}
         {waiting.map((request) => (
@@ -68,7 +68,7 @@ function WaitingCard({
   }
 
   return (
-    <article data-request-id={request.id} data-status={request.status} className="flex min-h-0 flex-1 flex-col gap-2 rounded-lg bg-white/10 p-3">
+    <article data-request-id={request.id} data-status={request.status} className="flex shrink-0 flex-col gap-2 rounded-lg bg-white/10 p-3">
       <div className="flex gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
@@ -77,9 +77,11 @@ function WaitingCard({
           </div>
           <p className="mt-1 text-[22px] leading-snug">{request.callerWords}</p>
         </div>
-        <div className="h-24 w-40 shrink-0">
-          <Preview request={request} />
-        </div>
+        {hasPreview(request) ? (
+          <div className="h-24 w-40 shrink-0">
+            <Preview request={request} />
+          </div>
+        ) : null}
       </div>
       {request.rule ? (
         <p>
@@ -89,6 +91,9 @@ function WaitingCard({
         </p>
       ) : null}
       {request.rule?.reason ? <p className="text-[18px] leading-snug">{request.rule.reason}</p> : null}
+      {request.statusReason && !sameText(request.statusReason, request.rule?.reason) ? (
+        <p className="text-[16px] leading-snug text-white/70">{request.statusReason}</p>
+      ) : null}
       <div className="flex shrink-0 items-center gap-2">
         <input
           value={reason}
@@ -105,6 +110,7 @@ function WaitingCard({
           disabled={pending != null}
           className="h-12 min-w-0 flex-1 rounded-lg border border-white/20 bg-black px-3 text-[18px] text-white outline-none placeholder:text-white/50"
         />
+        {request.pullRequestUrl ? (
         <button
           type="button"
           data-action="approve"
@@ -114,6 +120,7 @@ function WaitingCard({
         >
           Approve
         </button>
+        ) : null}
         <button
           type="button"
           data-action="decline"
@@ -127,6 +134,16 @@ function WaitingCard({
       {error ? <p className="text-[16px]">Could not update this ask.</p> : null}
     </article>
   );
+}
+
+function sameText(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const head = (t: string) => t.replace(/\s+/g, " ").trim().slice(0, 80);
+  return head(a) === head(b);
+}
+
+function hasPreview(request: FactoryRequest): boolean {
+  return Boolean(request.screenshotBeforeUrl || request.screenshotAfterUrl || request.previewUrl);
 }
 
 function Preview({ request }: { request: FactoryRequest }) {

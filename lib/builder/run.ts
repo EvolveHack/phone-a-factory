@@ -99,7 +99,7 @@ async function runBuildCommand(ctx: Ctx): Promise<{ code: number; out: string }>
 
 async function checkCaller(ctx: Ctx, previewPage: string): Promise<void> {
   if (!ctx.sandbox) throw new Error("The sandbox is not running.");
-  await claude(ctx, checkPrompt(ctx.request, previewPage), 120_000);
+  await claude(ctx, checkPrompt(ctx.request, previewPage), 240_000);
   const run = () => commandOutput(ctx.sandbox!, {
     cmd: "node",
     args: ["/tmp/check-caller.mjs"],
@@ -110,7 +110,7 @@ async function checkCaller(ctx: Ctx, previewPage: string): Promise<void> {
   let result = await run();
   const asserted = result.out.includes("ASSERT_FAIL");
   if (result.code !== 0 && !asserted) {
-    await claude(ctx, fixCheckPrompt(result.out), 90_000);
+    await claude(ctx, fixCheckPrompt(result.out), 150_000);
     result = await run();
   }
   if (result.code !== 0) {
