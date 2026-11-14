@@ -33,3 +33,31 @@ A company name that is neither customer asks which of the two companies called. 
 `FACTORY_8090_API_KEY` and `ELEVENLABS_TOOL_SECRET` are not in `.env.local`. Vercel does not download sensitive values. Until the key is added, 8090 writes log "8090 is not configured" and return null. Until the secret is added, the voice route returns 401. `/api/build/next` returns 404 until the builder route exists. Neither one blocks the caller's reply.
 
 No contract change.
+
+# W3 floor screen
+
+## What I built
+
+- `GET /api/state` returns `getState()` from the store.
+- Approve sets the request to `approved`, then calls `promote`. Decline stores the reason and sets `declined`. Undo and Veto call `undo` and `veto`.
+- The floor screen at `/` is a dark 1920x1080 page. It polls `/api/state` every second.
+- The top half shows Mesa Lane Freight and Pinecrest Logistics. Each board is an iframe when `NEXT_PUBLIC_DISPATCH_BOARD_PROD_URL` is set, and a placeholder when it is not. When a request goes live, that customer's iframe reloads and its border flashes for 3 seconds.
+- The queue lists every request, newest first: customer, caller, ask, ending badge, reason, status, and seconds since the call. Rejected requests are small and grey.
+- The current build lists steps for the request that is building or checking. The last step it can show is "Other customer unchanged."
+- Review cards for requests waiting for approval show the customer, the caller's words, the rule and reason, screenshots or a preview, and Approve and Decline. Live requests get Undo. Building and checking requests get Veto.
+- The score bar shows calls taken, how many went live on their own and that share, how many were sent to a person and that share, and the median time from call to live.
+- The phone line is in the top-right corner: "Call +1 408 762 6927".
+
+## How I tested it
+
+No `.env.local` and no `DATABASE_URL`. `npx tsc --noEmit` passed. `npm run build` passed, including after merging `main`.
+
+Against `http://127.0.0.1:3463` in headless Chrome at 1920x1080:
+
+- The five fixture requests showed in their states. The score read 4 calls taken, 1 (25%) went live on their own, 2 (50%) sent to a person, and 2 min from call to live.
+- Approve, Decline, Undo, and Veto were on screen. Decline with "Not this quarter." set that request to declined. Undo set the live request to undone. Veto set the building request to vetoed.
+- A veto posted from outside the page showed up on the next poll.
+- Approve set the waiting request to live, raised the score to 2 (50%), and flashed the Pinecrest border.
+- With the board URL unset, both boards said "The live board will show here."
+
+No contract change.
