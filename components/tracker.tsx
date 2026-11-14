@@ -6,7 +6,7 @@ const GATE = "var(--gate)";
 const LIVE = "var(--live)";
 const FAINT = "color-mix(in srgb, var(--fg) 14%, transparent)";
 
-/** One ask's trip down the line: six stops, the current one pulsing. A change that goes live on its own skips the Gate. */
+/** One ask's trip down the line: six stops, the current one pulsing. Only the large one shows the stop names. A change that goes live on its own skips the Gate. */
 export function Tracker({ request, large = false }: { request: FactoryRequest; large?: boolean }) {
   const onLine = stationOf(request) !== null;
   const at = reachedIndex(request);
@@ -44,14 +44,9 @@ export function Tracker({ request, large = false }: { request: FactoryRequest; l
                 }
               />
             </span>
-            <span
-              className={`mt-2 font-medium ${large ? "text-[15px]" : "text-[12px]"} ${current ? "text-fg" : reached ? "text-fg/70" : "text-fg/35"}`}
-            >
+            <span className={large ? `mt-2 text-[15px] font-medium ${current ? "text-fg" : reached ? "text-fg/70" : "text-fg/35"}` : "sr-only"}>
               {station.label}
             </span>
-            {large ? (
-              <span className="mt-1 px-2 text-center text-[12px] text-fg/40">{skipped ? "No review needed" : station.hint}</span>
-            ) : null}
           </li>
         );
       })}

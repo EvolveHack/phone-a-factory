@@ -87,11 +87,6 @@ export function formatCallToLive(seconds: number | null): string {
   return minutes === 1 ? "1 min" : `${minutes} min`;
 }
 
-export function shareOf(part: number, whole: number): string {
-  if (whole <= 0) return "0%";
-  return `${Math.round((part / whole) * 100)}%`;
-}
-
 /** Steps after "Other customer unchanged." stay off the floor screen. */
 export function visibleSteps(steps: BuildStep[], requestId: string): BuildStep[] {
   const allowed = STEP_ORDER.slice(0, LAST_VISIBLE + 1);

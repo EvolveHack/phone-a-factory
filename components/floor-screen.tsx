@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import type { FactoryRequest, StateSnapshot } from "@/contract/types";
 import { customerInfo, productOf, PRODUCTS, type ProductId } from "@/contract/products";
-import { endingBadge, secondsSince, statusLine } from "./floor-copy";
+import { secondsSince, statusLine } from "./floor-copy";
 import { ScoreBar } from "./score-bar";
 import { Shell } from "./shell";
 import { customerColor, stationOf } from "./stations";
@@ -48,7 +48,7 @@ export function FloorScreen({ initial }: { initial: StateSnapshot }) {
         <h1 className="font-[family-name:var(--font-display)] text-[36px] font-medium leading-none tracking-[-0.03em]">
           Call in an order. Watch it ship.
         </h1>
-        <div className="flex gap-2" role="group" aria-label="Show">
+        <div className="flex items-center gap-2" role="group" aria-label="Show">
           {GROUPS.map((g) => (
             <Chip key={g.id} on={group === g.id} onClick={() => setGroup(g.id)}>
               {g.label}
@@ -57,21 +57,23 @@ export function FloorScreen({ initial }: { initial: StateSnapshot }) {
               </span>
             </Chip>
           ))}
+          <select
+            aria-label="App"
+            value={product}
+            onChange={(event) => setProduct(event.target.value as ProductId | "all")}
+            className="ml-2 rounded-full bg-fg/[0.06] px-4 py-1.5 text-[13px] font-semibold text-fg/70 outline-none hover:bg-fg/[0.12]"
+          >
+            <option value="all">All apps</option>
+            {Object.values(PRODUCTS).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
-      <div className="-mt-2 flex flex-wrap gap-2" role="group" aria-label="App">
-        <Chip on={product === "all"} onClick={() => setProduct("all")}>
-          All apps
-        </Chip>
-        {Object.values(PRODUCTS).map((p) => (
-          <Chip key={p.id} on={product === p.id} onClick={() => setProduct(p.id)}>
-            {p.name}
-          </Chip>
-        ))}
-      </div>
-
-      <ul className="min-h-0 flex-1 space-y-4 overflow-y-auto p-1" data-floor-region="orders">
+      <ul className="min-h-0 flex-1 space-y-3 overflow-y-auto p-1" data-floor-region="orders">
         <AnimatePresence initial={false}>
           {shown.map((request) => (
             <Order key={request.id} request={request} line={statusLine(request, state.steps, state.requests)} now={now} />
@@ -114,30 +116,21 @@ function Order({ request, line, now }: { request: FactoryRequest; line: string; 
     >
       <Link
         href={`/asks/${request.id}`}
-        className={`relative grid grid-cols-[minmax(0,5fr)_minmax(0,5fr)_minmax(0,3fr)] items-center gap-10 overflow-hidden rounded-2xl bg-panel-2 py-5 pr-7 pl-8 ring-1 ring-line transition-colors hover:bg-panel-3 hover:ring-fg/30 ${group === "gate" ? "gate-hold" : ""}`}
+        className={`relative grid grid-cols-[minmax(0,7fr)_minmax(0,3fr)_minmax(0,3fr)] items-center gap-10 overflow-hidden rounded-2xl bg-panel-2 py-4 pr-7 pl-8 ring-1 ring-line transition-colors hover:bg-panel-3 hover:ring-fg/30 ${group === "gate" ? "gate-hold" : ""}`}
       >
         <span className="absolute inset-y-0 left-0 w-1.5" style={{ background: color }} aria-hidden />
         <div className="min-w-0">
-          <p className="truncate text-[12px] font-semibold uppercase tracking-[0.12em]">
-            <span style={{ color }}>{customerInfo(request.customer).name}</span>
-            <span className="text-fg/45"> · {productOf(request.customer).name}</span>
-          </p>
-          <p className="mt-1.5 line-clamp-2 font-[family-name:var(--font-display)] text-[18px] leading-snug">{request.ask}</p>
-          <p className="mt-1.5 truncate text-[13px] text-fg/45">
-            {request.callerName}, {request.callerRole}
+          <p className="truncate font-[family-name:var(--font-display)] text-[18px] leading-snug">{request.ask}</p>
+          <p className="mt-1 truncate text-[13px] text-fg/45">
+            <span className="font-semibold" style={{ color }}>
+              {customerInfo(request.customer).name}
+            </span>
+            {` · ${productOf(request.customer).name}`}
             {now == null ? "" : ` · ${secondsSince(request.createdAt, now)}`}
           </p>
         </div>
         <Tracker request={request} />
-        <div className="min-w-0 text-right">
-          <p className={`text-[14px] font-medium ${tone}`}>{line}</p>
-          {request.rule ? (
-            <p className="mt-1.5 truncate text-[12px] text-fg/45">
-              {request.rule.rule} · {endingBadge(request.rule.ending, request.rule.approver)}
-            </p>
-          ) : null}
-          <p className="mt-1.5 text-[13px] font-semibold text-fg/70">{group === "gate" ? "Review the change →" : "Open →"}</p>
-        </div>
+        <p className={`min-w-0 text-right text-[14px] font-medium ${tone}`}>{line}</p>
       </Link>
     </motion.li>
   );

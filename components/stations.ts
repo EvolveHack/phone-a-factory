@@ -3,13 +3,13 @@ import { CUSTOMER_IDS, type CustomerId } from "@/contract/products";
 
 export type StationId = "call" | "rules" | "build" | "checks" | "gate" | "live";
 
-export const STATIONS: { id: StationId; label: string; hint: string }[] = [
-  { id: "call", label: "Call", hint: "Heard and read back" },
-  { id: "rules", label: "Rules", hint: "Your rules pick the path" },
-  { id: "build", label: "Build", hint: "An agent makes the change" },
-  { id: "checks", label: "Checks", hint: "Build, folder, browser" },
-  { id: "gate", label: "Gate", hint: "A person decides" },
-  { id: "live", label: "Live", hint: "On that customer's board" },
+export const STATIONS: { id: StationId; label: string }[] = [
+  { id: "call", label: "Call" },
+  { id: "rules", label: "Rules" },
+  { id: "build", label: "Build" },
+  { id: "checks", label: "Checks" },
+  { id: "gate", label: "Gate" },
+  { id: "live", label: "Live" },
 ];
 
 const STATION_OF: Partial<Record<Status, StationId>> = {

@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { Facts, FactoryRequest, StateSnapshot } from "@/contract/types";
-import { customerInfo, otherCustomerOf, productOf } from "@/contract/products";
-import { endingBadge, FACT_LABEL, formatCallToLive, secondsSince, statusLine, STEP_LABEL, STEP_MARK, visibleSteps } from "./floor-copy";
+import { customerInfo, productOf } from "@/contract/products";
+import { FACT_LABEL, formatCallToLive, secondsSince, statusLine, STEP_LABEL, STEP_MARK, visibleSteps } from "./floor-copy";
 import { Shell } from "./shell";
 import { customerColor, stationOf } from "./stations";
 import { Tracker } from "./tracker";
 import { useFactory, type Act } from "./use-factory";
 
-/** One ask from call to live: what was said, which rule picked the path, what the agent changed, and the buttons a person needs. */
+/** One ask from call to live: where it is, the rule that picked the path, what the agent changed, and the buttons a person needs. */
 export function AskScreen({ initial, id }: { initial: StateSnapshot; id: string }) {
   const { state, error, now, act } = useFactory(initial);
   const request = state.requests.find((r) => r.id === id);
@@ -28,7 +28,6 @@ export function AskScreen({ initial, id }: { initial: StateSnapshot; id: string 
 
   const product = productOf(request.customer);
   const customer = customerInfo(request.customer);
-  const other = customerInfo(otherCustomerOf(request.customer));
   const color = customerColor(request.customer);
   const station = stationOf(request);
   const steps = visibleSteps(state.steps, request.id);
@@ -61,50 +60,20 @@ export function AskScreen({ initial, id }: { initial: StateSnapshot; id: string 
           <Tracker request={request} large />
           <p className="mt-6 text-center text-[16px] font-medium">{statusLine(request, state.steps, state.requests)}</p>
           {request.statusReason ? <p className="mx-auto mt-1 max-w-[760px] text-center text-[14px] text-fg/60">{request.statusReason}</p> : null}
+          {request.rule ? (
+            <p className="mx-auto mt-1 max-w-[760px] text-center text-[14px] text-fg/60">
+              <Link href="/rules" className="font-semibold hover:text-fg">
+                {request.rule.rule}
+              </Link>
+              {` · ${request.rule.reason}`}
+            </p>
+          ) : null}
         </section>
 
-        <div className="grid grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-7">
-          <div className="space-y-7">
-            <Panel title="The call">
-              <blockquote className="border-l-2 pl-4 text-[16px] leading-relaxed text-fg/85" style={{ borderColor: color }}>
-                “{request.callerWords}”
-              </blockquote>
-              {request.classification ? (
-                <>
-                  <p className="mt-5 text-[12px] font-semibold uppercase tracking-[0.12em] text-fg/45">Done when</p>
-                  <ul className="mt-2 space-y-1.5 text-[14px] text-fg/80">
-                    {request.classification.doneWhen.map((line) => (
-                      <li key={line}>✓ {line}</li>
-                    ))}
-                  </ul>
-                </>
-              ) : null}
-            </Panel>
-
-            {request.rule ? (
-              <Panel title="Why it took this path">
-                <p>
-                  <span
-                    className={`inline-block rounded-full px-3 py-1 text-[13px] font-semibold ${request.rule.ending === "goes_live" ? "bg-live/15 text-live" : "bg-gate/15 text-gate"}`}
-                  >
-                    {request.rule.rule} · {endingBadge(request.rule.ending, request.rule.approver)}
-                  </span>
-                </p>
-                <p className="mt-3 text-[15px] leading-snug text-fg/85">{request.rule.reason}</p>
-                {request.classification ? <FactList facts={request.classification.facts} /> : null}
-                <Link href="/rules" className="mt-3 inline-block text-[14px] font-semibold text-fg/55 hover:text-fg">
-                  See all rules →
-                </Link>
-              </Panel>
-            ) : null}
-          </div>
-
-          <div className="space-y-7">
-            <Panel title={`The change in ${product.name}`}>
-              <p className="text-[14px] leading-relaxed text-fg/60">
-                {product.what} This change is for {customer.name} only. {other.name} stays the same.
-              </p>
-              <div className="mt-5 flex flex-wrap gap-2">
+        <div className="grid grid-cols-[minmax(0,8fr)_minmax(0,4fr)] items-start gap-7">
+          <Panel title={`The change in ${product.name}`}>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-2">
                 {station === "live" ? (
                   <Out href={`${product.prodUrl}${customer.path}`} strong>
                     Open {customer.name}&apos;s {product.name}
@@ -112,10 +81,27 @@ export function AskScreen({ initial, id }: { initial: StateSnapshot; id: string 
                 ) : null}
                 {request.previewUrl && station !== "live" ? <Out href={request.previewUrl}>Open the preview</Out> : null}
                 {request.pullRequestUrl ? <Out href={request.pullRequestUrl}>Open the pull request</Out> : null}
+                <p className="ml-2 text-[14px] text-fg/55">Only {customer.name} changes.</p>
               </div>
               <Actions request={request} act={act} />
-              <Shots key={request.screenshotAfterUrl ?? "none"} before={request.screenshotBeforeUrl} after={request.screenshotAfterUrl} />
-            </Panel>
+            </div>
+            <Shots key={request.screenshotAfterUrl ?? "none"} before={request.screenshotBeforeUrl} after={request.screenshotAfterUrl} />
+          </Panel>
+
+          <div className="space-y-7">
+            {request.classification ? (
+              <Panel title="Done when">
+                <ul className="space-y-1.5 text-[14px] text-fg/80">
+                  {request.classification.doneWhen.map((line) => (
+                    <li key={line}>✓ {line}</li>
+                  ))}
+                </ul>
+                <details className="mt-5 border-t border-fg/10 pt-4">
+                  <summary className="cursor-pointer text-[14px] font-semibold text-fg/55 hover:text-fg">What the call said</summary>
+                  <FactList facts={request.classification.facts} />
+                </details>
+              </Panel>
+            ) : null}
 
             {steps.length > 0 ? (
               <Panel title="Checks">
@@ -127,8 +113,7 @@ export function AskScreen({ initial, id }: { initial: StateSnapshot; id: string 
                       >
                         {STEP_MARK[step.status]}
                       </span>
-                      <span className="shrink-0 text-fg/85">{STEP_LABEL[step.step]}</span>
-                      {step.log ? <span className="truncate text-[13px] text-fg/40">{step.log}</span> : null}
+                      <span className="text-fg/85">{STEP_LABEL[step.step]}</span>
                     </li>
                   ))}
                 </ul>
@@ -167,7 +152,7 @@ function Out({ href, strong = false, children }: { href: string; strong?: boolea
 function FactList({ facts }: { facts: Facts }) {
   const keys = Object.keys(FACT_LABEL) as (keyof Facts)[];
   return (
-    <ul className="mt-5 space-y-2 border-t border-fg/10 pt-4">
+    <ul className="mt-3 space-y-2">
       {keys.map((key) => {
         const fact = facts[key];
         if (!fact) return null; // Asks taken before a fact existed do not have it.
@@ -216,6 +201,7 @@ function Shots({ before, after }: { before: string | null; after: string | null 
 
 function Actions({ request, act }: { request: FactoryRequest; act: Act }) {
   const [reason, setReason] = useState("");
+  const [declining, setDeclining] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const station = stationOf(request);
@@ -238,16 +224,32 @@ function Actions({ request, act }: { request: FactoryRequest; act: Act }) {
   let buttons: React.ReactNode = null;
 
   if (request.status === "waiting_for_approval") {
-    buttons = (
-      <>
+    buttons = declining ? (
+      <form
+        className="flex flex-wrap gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void send("decline");
+        }}
+      >
         <input
+          autoFocus
           value={reason}
           onChange={(event) => setReason(event.target.value)}
-          placeholder="Reason, if you decline"
+          placeholder="Reason"
           aria-label="Reason"
           disabled={busy !== null}
-          className="h-10 min-w-0 flex-1 rounded-lg bg-well px-3 text-[15px] text-fg ring-1 ring-fg/15 outline-none placeholder:text-fg/40"
+          className="h-10 w-72 rounded-lg bg-well px-3 text-[15px] text-fg ring-1 ring-fg/15 outline-none placeholder:text-fg/40"
         />
+        <button type="submit" data-action="decline" disabled={busy !== null} className={quiet}>
+          Decline
+        </button>
+        <button type="button" disabled={busy !== null} onClick={() => setDeclining(false)} className={quiet}>
+          Cancel
+        </button>
+      </form>
+    ) : (
+      <>
         {request.pullRequestUrl ? (
           <button
             type="button"
@@ -259,7 +261,7 @@ function Actions({ request, act }: { request: FactoryRequest; act: Act }) {
             Approve
           </button>
         ) : null}
-        <button type="button" data-action="decline" disabled={busy !== null} onClick={() => void send("decline")} className={quiet}>
+        <button type="button" disabled={busy !== null} onClick={() => setDeclining(true)} className={quiet}>
           Decline
         </button>
       </>
@@ -292,9 +294,9 @@ function Actions({ request, act }: { request: FactoryRequest; act: Act }) {
 
   if (!buttons && !note) return null;
   return (
-    <div className="mt-5 border-t border-fg/10 pt-5">
-      <div className="flex flex-wrap gap-2">{buttons}</div>
-      {note ? <p className="mt-2 text-[14px] text-fg/70">{note}</p> : null}
+    <div>
+      <div className="flex flex-wrap justify-end gap-2">{buttons}</div>
+      {note ? <p className="mt-2 text-right text-[14px] text-fg/70">{note}</p> : null}
     </div>
   );
 }

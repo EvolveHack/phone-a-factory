@@ -1,36 +1,15 @@
-"use client";
-
-import { motion } from "motion/react";
 import type { Score } from "@/contract/types";
-import { formatCallToLive, shareOf } from "./floor-copy";
+import { formatCallToLive } from "./floor-copy";
 
 export function ScoreBar({ score }: { score: Score }) {
+  const parts = [
+    `${score.callsTaken} ${score.callsTaken === 1 ? "call" : "calls"}`,
+    `${score.wentLiveOnTheirOwn} went live on their own`,
+    ...(score.medianSecondsCallToLive == null ? [] : [`${formatCallToLive(score.medianSecondsCallToLive)} from call to live`]),
+  ];
   return (
-    <footer className="grid grid-cols-4 gap-6" data-floor-region="score">
-      <Stat label="Calls taken" value={String(score.callsTaken)} />
-      <Stat label="Went live on their own" value={`${score.wentLiveOnTheirOwn}`} note={shareOf(score.wentLiveOnTheirOwn, score.callsTaken)} />
-      <Stat label="Sent to a person" value={`${score.sentToAPerson}`} note={shareOf(score.sentToAPerson, score.callsTaken)} />
-      <Stat label="Median time from call to live" value={formatCallToLive(score.medianSecondsCallToLive)} />
+    <footer className="border-t border-fg/15 pt-4 text-[14px] tabular-nums text-fg/60" data-floor-region="score">
+      {parts.join(" · ")}
     </footer>
-  );
-}
-
-function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
-  return (
-    <div className="min-w-0 border-t border-fg/15 pt-4">
-      <p className="flex items-baseline gap-2">
-        <motion.span
-          key={value}
-          initial={{ y: 12, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ type: "spring", stiffness: 300, damping: 22 }}
-          className="font-[family-name:var(--font-display)] text-[34px] font-medium leading-none tabular-nums text-accent"
-        >
-          {value}
-        </motion.span>
-        {note ? <span className="text-[15px] text-fg/50">{note}</span> : null}
-      </p>
-      <p className="mt-2 text-[12px] uppercase tracking-[0.12em] text-fg/50">{label}</p>
-    </div>
   );
 }
