@@ -11,7 +11,7 @@ Only the owner edits this file. All JSON. Types are in `contract/types.ts`.
 | `POST /api/requests/[id]/decline` | W3 (floor) | Review card | `{ reason }` | `{ ok }` |
 | `POST /api/requests/[id]/undo` | W3 (floor) | Undo button | `{}` | `{ ok }`. Calls `undo(id)` from `lib/builder` |
 | `POST /api/requests/[id]/veto` | W3 (floor) | Veto button | `{}` | `{ ok }`. Calls `veto(id)` from `lib/builder` |
-| `POST /api/build/next` | W2 | W1 after classifying; W2 itself after each build finishes | `{}` | `{ started: requestId \| null }`. Takes the next queued request (goes_live first, then oldest) and runs it. One at a time. `maxDuration = 800`. |
+| `POST /api/build/next` | W2 | W1 after classifying; W2 itself after each build finishes | `{}` | `{ started, all }`. Starts queued requests (goes_live first, then oldest) until 3 are building, using `claimNextQueued()` so two calls never take the same request. `maxDuration = 800`. |
 
 ## Functions other workstreams call (signatures fixed here)
 

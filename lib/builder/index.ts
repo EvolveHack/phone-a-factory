@@ -4,7 +4,7 @@ import { previousProductionDeployment, promoteDeployment, rollbackTo, waitForDep
 import { closePullRequest, mergePullRequest, revertPullRequestOnMain } from "@/lib/builder/github";
 import { stopSandbox } from "@/lib/builder/sandbox";
 import { errorText, sandboxNameFromLog } from "@/lib/builder/text";
-import { addStep, getRequest, getState, setStatus } from "@/lib/store";
+import { addStep, getRequest, getState, setStatus, updateRequest, withMergeLock } from "@/lib/store";
 import type { FactoryRequest } from "@/contract/types";
 
 async function linkWorkOrder(request: FactoryRequest): Promise<void> {
@@ -46,10 +46,25 @@ export async function promote(requestId: string): Promise<void> {
   if (request.status === "live") return;
   if (!request.pullRequestUrl) throw new Error("This request has no pull request to merge.");
   try {
-    await addStep({ requestId, step: "promoted", status: "running", log: "Merging the pull request." });
-    const sha = await mergePullRequest(request.pullRequestUrl);
-    const deploy = await waitForDeploy({ sha, target: "production", timeoutMs: 180_000 });
-    await promoteDeployment(deploy.id);
+    await addStep({ requestId, step: "promoted", status: "running", log: "Waiting for its turn to merge." });
+    const pullUrl = request.pullRequestUrl;
+    const merged = await withMergeLock(async () => {
+      let sha: string;
+      try {
+        sha = await mergePullRequest(pullUrl);
+      } catch (error) {
+        if (isConflict(error)) return null;
+        throw error;
+      }
+      await addStep({ requestId, step: "promoted", status: "running", log: "Merged. Waiting for production." });
+      const deploy = await waitForDeploy({ sha, target: "production", timeoutMs: 180_000 });
+      await promoteDeployment(deploy.id);
+      return sha;
+    });
+    if (merged === null) {
+      await rebuildOnTop(requestId, pullUrl);
+      return;
+    }
     await addStep({ requestId, step: "promoted", status: "passed", log: "Production is updated." });
     await setStatus(requestId, "live");
     await linkWorkOrder(request);
@@ -62,6 +77,19 @@ export async function promote(requestId: string): Promise<void> {
     }
     throw error;
   }
+}
+
+function isConflict(error: unknown): boolean {
+  const text = errorText(error);
+  return /\((405|409)\)|not mergeable|merge conflict/i.test(text);
+}
+
+/** Another change reached main first and touched the same file. Build this ask again on top of it. */
+async function rebuildOnTop(requestId: string, pullUrl: string): Promise<void> {
+  await closePullRequest(pullUrl).catch(() => undefined);
+  await addStep({ requestId, step: "promoted", status: "failed", log: "Another change reached this board first. Building again on top of it." });
+  await updateRequest(requestId, { pullRequestUrl: null, previewUrl: null, screenshotBeforeUrl: null, screenshotAfterUrl: null });
+  await setStatus(requestId, "queued", "Building again on top of a newer change.");
 }
 
 export async function undo(requestId: string): Promise<void> {

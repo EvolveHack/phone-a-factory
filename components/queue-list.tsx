@@ -1,5 +1,5 @@
 import type { Ending, FactoryRequest } from "@/contract/types";
-import { customerName, endingBadge, queueOrder, secondsSince, STATUS_LABEL } from "./floor-copy";
+import { customerName, endingBadge, queueOrder, queueWait, secondsSince, STATUS_LABEL } from "./floor-copy";
 
 export function QueueList({ requests, now }: { requests: FactoryRequest[]; now: number | null }) {
   const ordered = queueOrder(requests);
@@ -9,14 +9,14 @@ export function QueueList({ requests, now }: { requests: FactoryRequest[]; now: 
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
         {ordered.length === 0 ? <p className="text-[22px]">No asks yet.</p> : null}
         {ordered.map((request) => (
-          <QueueCard key={request.id} request={request} now={now} />
+          <QueueCard key={request.id} request={request} now={now} wait={queueWait(request, requests)} />
         ))}
       </div>
     </section>
   );
 }
 
-function QueueCard({ request, now }: { request: FactoryRequest; now: number | null }) {
+function QueueCard({ request, now, wait }: { request: FactoryRequest; now: number | null; wait: string | null }) {
   const since = now == null ? null : secondsSince(request.createdAt, now);
   if (request.status === "rejected") {
     return (
@@ -54,6 +54,7 @@ function QueueCard({ request, now }: { request: FactoryRequest; now: number | nu
         ) : null}
         <span className="text-[18px]">{STATUS_LABEL[request.status]}</span>
       </div>
+      {wait ? <p className="mt-1 text-[18px] font-semibold text-amber-200">{wait}</p> : null}
       {request.rule?.reason ? <p className="mt-1 text-[18px] leading-snug text-white/85">{request.rule.reason}</p> : null}
       {request.statusReason && !sameText(request.statusReason, request.rule?.reason) ? (
         <p className="mt-1 text-[18px] leading-snug">{request.statusReason}</p>

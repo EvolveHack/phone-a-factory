@@ -86,7 +86,10 @@ received ─▶ classified ─▶ queued ─▶ building ─▶ checking ─┬�
 ```
 
 - **Queue order:** "goes live" asks first, then "needs a person" asks, each oldest first.
-- **One build at a time,** so changes never collide.
+- **Up to three builds at a time.** Each build starts from the latest main. Merges happen **one at a time** (a database lock), and each merge makes its own deploy live.
+- **Collisions:** if another change reached main first and touched the same file, the merge is refused. The ask goes back to the queue and is built again on top of the newer change.
+- **The other-customer check** compares the preview with the deploy of the main commit the build started from, not with live production, so a change that went live meanwhile is not mistaken for a leak.
+- **Queued cards say why they wait:** how many builds are ahead and a rough time, from the median build time so far.
 - **Undo:** any live change can be rolled back with one click.
 
 ## 7. Requirements
@@ -113,7 +116,12 @@ P0 = needed on stage. P1 = only if P0 is solid.
 
 - **P0** Claude Code runs headless in a Vercel Sandbox, started ahead of time from a snapshot of Dispatch Board with dependencies installed.
 - **P0** It gets the ask, the two "done when" lines, the caller's customer, and the allowed folders.
-- **P0** Checks: the build passes (one retry), only allowed files changed (for "goes live," only that customer's folder), a browser test checks each "done when" line on the caller's view, a second browser test confirms **the other customer's view did not change**, and a screenshot is taken.
+- **P0** Checks: the build passes (one retry), only allowed files changed (for "goes live," only that customer's folder), a browser test on the caller's view, a second browser test confirms **the other customer's view did not change**, and a screenshot is taken.
+- **P0** Browser test on the caller's view, two paths:
+  - **Fast path:** when the change only edits that customer's `view.json`, a fixed script checks that the preview shows exactly the new columns (labels and order), every filter, and the title. No model is involved, and it takes seconds.
+  - **Other changes** (map layer, styles, banner, billing): Claude Code writes a short Playwright check for the two "done when" lines, using **Claude Haiku 5.5** for speed.
+- **P0** Where a "goes live" change may go: `view.json` (columns, labels, filters, sorting, highlights, hidden panels, title) and `overrides.tsx` slots (the banner above the table, `MapLayer` for anything drawn on the map, and `css` for styling that customer's page only).
+- **P0** When the agent cannot make the ask inside those files, it writes one sentence saying why. The ask then goes to the product owner with that sentence as the reason.
 - **P0** All checks pass and the ending is "goes live": promote to production, open a pull request, link it in 8090. Any check fails: move to "waiting for approval" with the failure as the reason.
 - **P0** "Needs a person": deploy the preview only, then wait for approval.
 - **P0** Undo promotes the previous deploy.
@@ -147,7 +155,7 @@ P0 = needed on stage. P1 = only if P0 is solid.
 | Phone number | Plivo, +1 408 762 6927, inbound trunk to ElevenLabs | Done |
 | Voice agent | ElevenLabs Agents, "phone-a-factory" | Created; needs the tool and the new prompt |
 | Server, floor screen | Next.js on Vercel | Kickoff |
-| Model calls | Claude through Vercel AI Gateway | Kickoff |
+| Model calls | Classification: Claude Sonnet 5.5 through Vercel AI Gateway. Code edits: Claude Code's default model. Browser checks: Claude Haiku 5.5. | Built |
 | Builder | Claude Code in Vercel Sandbox | Kickoff |
 | Demo app | Dispatch Board, Next.js, its own GitHub repository, on Vercel | Kickoff |
 | Records | 8090 Software Factory (External API) | Keys before kickoff |
@@ -203,7 +211,7 @@ Other hackers call in during the event as either customer, so both boards change
 | A change leaks to the other customer | The "other customer unchanged" check fails it before it ships. |
 | The audience tries to break it | Content check, the agent's refusals, the folder limit, and the Veto button. |
 | A build is slow or fails | Most "goes live" changes only edit `view.json`, which is fast. The sandbox is started ahead of time. Failures go to a person. A finished run is ready to show. |
-| Many calls at once | One build at a time, visible queue. Check the ElevenLabs limit on simultaneous calls. |
+| Many calls at once | Up to three builds at once, merges one at a time, and each queued card shows its wait. Check the ElevenLabs limit on simultaneous calls. |
 | Phone or venue signal | Test the number today. A second phone on speaker. A recorded backup video. |
 | 8090 API errors | The local database drives the screen; 8090 writes retry. |
 

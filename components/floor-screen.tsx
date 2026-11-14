@@ -5,7 +5,7 @@ import type { CustomerId } from "@/contract/view";
 import type { StateSnapshot } from "@/contract/types";
 import { BuildPanel } from "./build-panel";
 import { CustomerBoards } from "./customer-boards";
-import { currentBuild, newestFirst } from "./floor-copy";
+import { newestFirst } from "./floor-copy";
 import { QueueList } from "./queue-list";
 import { ReviewPanel, type ReviewAction } from "./review-panel";
 import { ScoreBar } from "./score-bar";
@@ -104,7 +104,7 @@ export function FloorScreen({ initial, boardUrl }: { initial: StateSnapshot; boa
         ) : null}
         <div className="grid min-h-0 flex-1 grid-cols-3 gap-3">
           <QueueList requests={requests} now={now} />
-          <BuildPanel request={currentBuild(requests)} steps={state.steps} />
+          <BuildPanel requests={requests.filter((r) => r.status === "building" || r.status === "checking" || r.status === "approved")} steps={state.steps} />
           <ReviewPanel requests={requests} onAction={onAction} />
         </div>
       </div>

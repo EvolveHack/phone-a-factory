@@ -1,7 +1,7 @@
 import { put } from "@vercel/blob";
 import type { Sandbox } from "@vercel/sandbox";
 import type { BuildStepName, Ending, FactoryRequest } from "@/contract/types";
-import { compareScript, screenshotScript } from "@/lib/builder/browser";
+import { compareScript, fastCheckScript, screenshotScript } from "@/lib/builder/browser";
 import { customerName, customerPage, fileAllowed, otherCustomer, repoSlug, required } from "@/lib/builder/env";
 import { promote } from "@/lib/builder/index";
 import { openPullRequest } from "@/lib/builder/github";
@@ -27,6 +27,8 @@ type Ctx = {
   step: BuildStepName;
   previewOrigin: string | null;
   screenshotsSaved: boolean;
+  baseSha: string | null;
+  changed: string[];
 };
 
 async function ensureActive(ctx: Ctx): Promise<void> {
@@ -46,12 +48,13 @@ async function pass(ctx: Ctx, log: string): Promise<void> {
   await addStep({ requestId: ctx.request.id, step: ctx.step, status: "passed", log });
 }
 
-async function claude(ctx: Ctx, prompt: string, timeoutMs: number): Promise<void> {
+async function claude(ctx: Ctx, prompt: string, timeoutMs: number, model?: "haiku"): Promise<void> {
   if (!ctx.sandbox) throw new Error("The sandbox is not running.");
   await ctx.sandbox.writeFiles([{ path: "/tmp/paf-prompt.md", content: prompt }]);
+  const pick = model ? ` --model ${model}` : "";
   const result = await commandOutput(ctx.sandbox, {
     cmd: "bash",
-    args: ["-c", "claude -p --dangerously-skip-permissions --output-format text < /tmp/paf-prompt.md"],
+    args: ["-c", `claude -p --dangerously-skip-permissions${pick} --output-format text < /tmp/paf-prompt.md`],
     cwd: ctx.cwd,
     timeoutMs,
   });
@@ -88,6 +91,7 @@ async function prepareRepo(ctx: Ctx): Promise<void> {
   await setOrigin(ctx.sandbox, ctx.cwd, true);
   await commandMust(ctx.sandbox, { cmd: "git", args: ["fetch", "origin", "+refs/heads/main:refs/remotes/origin/main"], cwd: ctx.cwd, timeoutMs: 60_000 }, "Could not fetch Dispatch Board.");
   await commandMust(ctx.sandbox, { cmd: "git", args: ["checkout", "-B", "main", "origin/main"], cwd: ctx.cwd }, "Could not update main.");
+  ctx.baseSha = (await commandMust(ctx.sandbox, { cmd: "git", args: ["rev-parse", "HEAD"], cwd: ctx.cwd }, "Could not read main.")).trim() || null;
   await commandMust(ctx.sandbox, { cmd: "git", args: ["checkout", "-B", branch], cwd: ctx.cwd }, "Could not create the branch.");
   await setOrigin(ctx.sandbox, ctx.cwd, false);
 }
@@ -97,9 +101,22 @@ async function runBuildCommand(ctx: Ctx): Promise<{ code: number; out: string }>
   return commandOutput(ctx.sandbox, { cmd: "npm", args: ["run", "build"], cwd: ctx.cwd, timeoutMs: 180_000 });
 }
 
-async function checkCaller(ctx: Ctx, previewPage: string): Promise<void> {
+async function checkCaller(ctx: Ctx, previewPage: string): Promise<boolean> {
   if (!ctx.sandbox) throw new Error("The sandbox is not running.");
-  await claude(ctx, checkPrompt(ctx.request, previewPage), 240_000);
+  const viewOnly = `tenants/${ctx.request.customer}/view.json`;
+  if (ctx.changed.length > 0 && ctx.changed.every((file) => file === viewOnly)) {
+    await ctx.sandbox.writeFiles([{ path: "/tmp/paf-fast.mjs", content: fastCheckScript }]);
+    const fast = await commandOutput(ctx.sandbox, {
+      cmd: "node",
+      args: ["/tmp/paf-fast.mjs"],
+      cwd: ctx.cwd,
+      env: browserEnv(ctx, { PAGE_URL: previewPage, VIEW_PATH: `${ctx.absCwd}/${viewOnly}` }),
+      timeoutMs: 90_000,
+    });
+    if (fast.code !== 0) throw new Error(`The caller's board does not show the new view. ${fast.out}`.trim());
+    return true;
+  }
+  await claude(ctx, checkPrompt(ctx.request, previewPage), 240_000, "haiku");
   const run = () => commandOutput(ctx.sandbox!, {
     cmd: "node",
     args: ["/tmp/check-caller.mjs"],
@@ -110,12 +127,26 @@ async function checkCaller(ctx: Ctx, previewPage: string): Promise<void> {
   let result = await run();
   const asserted = result.out.includes("ASSERT_FAIL");
   if (result.code !== 0 && !asserted) {
-    await claude(ctx, fixCheckPrompt(result.out), 150_000);
+    await claude(ctx, fixCheckPrompt(result.out), 150_000, "haiku");
     result = await run();
   }
   if (result.code !== 0) {
     throw new Error("The caller's board did not match the done-when lines.");
   }
+  return false;
+}
+
+/** The deploy of the main commit this build started from. Other builds may change production meanwhile. */
+async function baseOrigin(ctx: Ctx): Promise<string> {
+  if (ctx.baseSha) {
+    try {
+      const base = await waitForDeploy({ sha: ctx.baseSha, target: "production", timeoutMs: 20_000 });
+      return base.url;
+    } catch {
+      // Fall back to the production address.
+    }
+  }
+  return required("DISPATCH_BOARD_PROD_URL");
 }
 
 async function checkOther(ctx: Ctx, previewOrigin: string): Promise<void> {
@@ -127,7 +158,7 @@ async function checkOther(ctx: Ctx, previewOrigin: string): Promise<void> {
     args: ["/tmp/paf-compare.mjs"],
     cwd: ctx.cwd,
     env: browserEnv(ctx, {
-      PROD_URL: customerPage(required("DISPATCH_BOARD_PROD_URL"), other),
+      PROD_URL: customerPage(await baseOrigin(ctx), other),
       PREVIEW_URL: customerPage(previewOrigin, other),
     }),
     timeoutMs: 90_000,
@@ -203,6 +234,8 @@ export async function runBuild(requestId: string): Promise<void> {
     step: "sandbox_ready",
     previewOrigin: null,
     screenshotsSaved: false,
+    baseSha: null,
+    changed: [],
   };
 
   try {
@@ -231,6 +264,7 @@ export async function runBuild(requestId: string): Promise<void> {
 
     await begin(ctx, "folder_check", "Checking that only allowed files changed.");
     const files = await changedFiles(ctx);
+    ctx.changed = files;
     if (files.length === 0) {
       const note = await commandOutput(ctx.sandbox!, { cmd: "bash", args: ["-c", "cat /tmp/paf-cannot.txt 2>/dev/null | head -c 400"] });
       const why = note.out.replace(/\s+/g, " ").trim();
@@ -283,8 +317,8 @@ export async function runBuild(requestId: string): Promise<void> {
     await pass(ctx, "The preview is ready.");
 
     await begin(ctx, "browser_check_caller", "Checking the caller's board.");
-    await checkCaller(ctx, previewPage);
-    await pass(ctx, "The caller's board matches the done-when lines.");
+    const fast = await checkCaller(ctx, previewPage);
+    await pass(ctx, fast ? "The caller's board shows the new view exactly." : "The caller's board matches the done-when lines.");
 
     await begin(ctx, "browser_check_other_customer", "Checking that the other customer's board stayed the same.");
     await checkOther(ctx, preview.url);

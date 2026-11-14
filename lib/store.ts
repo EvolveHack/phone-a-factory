@@ -73,6 +73,58 @@ export async function nextQueued(): Promise<FactoryRequest | null> {
   return queued[0] ?? null;
 }
 
+/** How many builds may run at the same time. Merges still happen one at a time (see withMergeLock). */
+export const MAX_PARALLEL_BUILDS = 3;
+
+const ACTIVE_BUILD: Status[] = ["building", "checking", "approved"];
+
+function queueSort(a: FactoryRequest, b: FactoryRequest): number {
+  const pa = a.rule?.ending === "goes_live" ? 0 : 1;
+  const pb = b.rule?.ending === "goes_live" ? 0 : 1;
+  return pa - pb || a.createdAt.localeCompare(b.createdAt);
+}
+
+/** Atomically move the next queued request to "building" if fewer than `max` builds are running. */
+export async function claimNextQueued(max = MAX_PARALLEL_BUILDS): Promise<FactoryRequest | null> {
+  const pick = (all: FactoryRequest[]): FactoryRequest | null => {
+    if (all.filter((r) => ACTIVE_BUILD.includes(r.status)).length >= max) return null;
+    const queued = all.filter((r) => r.status === "queued").sort(queueSort);
+    const next = queued[0];
+    if (!next) return null;
+    const at = new Date().toISOString();
+    return { ...next, status: "building", statusReason: null, statusTimes: { ...next.statusTimes, building: at } };
+  };
+  if (!sql) {
+    const next = pick([...mem().requests.values()]);
+    if (next) mem().requests.set(next.id, structuredClone(next));
+    return next;
+  }
+  return sql.begin(async (tx) => {
+    await tx`select pg_advisory_xact_lock(4201)`;
+    const rows = await tx<{ data: FactoryRequest }[]>`
+      select data from requests where status in ('queued', 'building', 'checking', 'approved')`;
+    const next = pick(rows.map((r) => r.data));
+    if (!next) return null;
+    await tx`update requests set status = 'building', data = ${tx.json(next as never)} where id = ${next.id}`;
+    return next;
+  }) as Promise<FactoryRequest | null>;
+}
+
+let memLock: Promise<unknown> = Promise.resolve();
+
+/** Run `fn` while no other merge runs, so changes reach main and production one at a time. */
+export async function withMergeLock<T>(fn: () => Promise<T>): Promise<T> {
+  if (!sql) {
+    const run = memLock.then(fn, fn);
+    memLock = run.catch(() => undefined);
+    return run;
+  }
+  return sql.begin(async (tx) => {
+    await tx`select pg_advisory_xact_lock(4202)`;
+    return fn();
+  }) as Promise<T>;
+}
+
 export async function isBuilderBusy(): Promise<boolean> {
   const all = await listRequests();
   return all.some((r) => r.status === "building" || r.status === "checking" || r.status === "approved");

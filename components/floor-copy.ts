@@ -149,3 +149,38 @@ export function boardSrc(base: string, path: string, reload: number): string {
   const src = `${base}${path}`;
   return reload > 0 ? `${src}?reload=${reload}` : src;
 }
+
+const PARALLEL = 3;
+const BUILDING: Status[] = ["building", "checking", "approved"];
+
+function typicalBuildMinutes(requests: FactoryRequest[]): number {
+  const took = requests
+    .map((r) => {
+      const start = r.statusTimes.building;
+      const end = r.statusTimes.live ?? r.statusTimes.waiting_for_approval;
+      return start && end ? (Date.parse(end) - Date.parse(start)) / 60000 : null;
+    })
+    .filter((m): m is number => m != null && m > 0)
+    .sort((a, b) => a - b);
+  return took.length ? took[Math.floor(took.length / 2)] : 4;
+}
+
+/** For a queued ask: how many asks are ahead of it and a rough wait. Null when it is not queued. */
+export function queueWait(request: FactoryRequest, requests: FactoryRequest[]): string | null {
+  if (request.status !== "queued") return null;
+  const queued = requests
+    .filter((r) => r.status === "queued")
+    .sort((a, b) => {
+      const pa = a.rule?.ending === "goes_live" ? 0 : 1;
+      const pb = b.rule?.ending === "goes_live" ? 0 : 1;
+      return pa - pb || a.createdAt.localeCompare(b.createdAt);
+    });
+  const ahead = queued.findIndex((r) => r.id === request.id);
+  const building = requests.filter((r) => BUILDING.includes(r.status)).length;
+  const freeNow = Math.max(0, PARALLEL - building);
+  if (ahead < freeNow) return "Starting now.";
+  const rounds = Math.ceil((ahead - freeNow + 1) / PARALLEL);
+  const minutes = Math.max(1, Math.round(rounds * typicalBuildMinutes(requests)));
+  const before = building + ahead;
+  return `Waiting for ${before} ${before === 1 ? "build" : "builds"} ahead. About ${minutes} min.`;
+}

@@ -69,3 +69,37 @@ try {
   process.exit(1);
 }
 `;
+
+/** For a change to view.json only: the preview must show exactly the new columns, in order, and every filter. */
+export const fastCheckScript = `${LAUNCH}
+import { readFileSync } from "node:fs";
+try {
+  const view = JSON.parse(readFileSync(process.env.VIEW_PATH, "utf8"));
+  const page = await browser.newPage({ viewport: { width: 700, height: 900 } });
+  await page.setExtraHTTPHeaders(bypassHeaders());
+  await page.goto(process.env.PAGE_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+  await page.waitForSelector("[data-testid=loads-table]", { timeout: 30000 });
+  const headers = await page.locator("[data-testid^=column-header-]").evaluateAll((els) =>
+    els.map((el) => ({ id: el.getAttribute("data-testid"), text: (el.textContent || "").replace(/\\s+/g, " ").trim() })));
+  const want = (view.columns || []).map((c) => ({ id: "column-header-" + c.key, text: String(c.label).trim() }));
+  if (JSON.stringify(headers) !== JSON.stringify(want)) {
+    console.log("ASSERT_FAIL columns " + JSON.stringify(headers) + " expected " + JSON.stringify(want));
+    process.exit(1);
+  }
+  for (const f of view.filters || []) {
+    if ((await page.locator("[data-testid=filter-" + f.key + "]").count()) === 0) {
+      console.log("ASSERT_FAIL missing filter " + f.key);
+      process.exit(1);
+    }
+  }
+  if (view.title && !(await page.locator("[data-testid=board-title]").innerText()).includes(view.title)) {
+    console.log("ASSERT_FAIL title");
+    process.exit(1);
+  }
+  await browser.close();
+  console.log("PASS");
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
+`;

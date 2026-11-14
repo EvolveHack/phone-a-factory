@@ -1,5 +1,5 @@
 import { runBuild } from "@/lib/builder/run";
-import { isBuilderBusy, nextQueued, setStatus } from "@/lib/store";
+import { MAX_PARALLEL_BUILDS, claimNextQueued } from "@/lib/store";
 import { after } from "next/server";
 
 export const maxDuration = 800;
@@ -15,17 +15,19 @@ function originOf(req: Request): string {
 }
 
 export async function POST(req: Request) {
-  if (await isBuilderBusy()) return Response.json({ started: null });
-  const next = await nextQueued();
-  if (!next) return Response.json({ started: null });
-  await setStatus(next.id, "building");
   const origin = originOf(req);
-  after(async () => {
-    try {
-      await runBuild(next.id);
-    } finally {
-      await fetch(`${origin}/api/build/next`, { method: "POST", cache: "no-store" }).catch(() => undefined);
-    }
-  });
-  return Response.json({ started: next.id });
+  const started: string[] = [];
+  for (let i = 0; i < MAX_PARALLEL_BUILDS; i++) {
+    const next = await claimNextQueued();
+    if (!next) break;
+    started.push(next.id);
+    after(async () => {
+      try {
+        await runBuild(next.id);
+      } finally {
+        await fetch(`${origin}/api/build/next`, { method: "POST", cache: "no-store" }).catch(() => undefined);
+      }
+    });
+  }
+  return Response.json({ started: started[0] ?? null, all: started });
 }
