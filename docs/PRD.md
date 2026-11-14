@@ -4,6 +4,25 @@
 **Replaces:** the earlier versions of this file and `docs/PLAN-phone-a-factory.md`.
 **Scope rule:** good enough for a live demo. Everything not built goes on the deck's "next" slide (section 14).
 
+## 0. Five products (added 11-14)
+
+The line now serves **five products, each with two customers**. The registry in `contract/products.ts` is the only list: product name, vendor, what it does, repo, production address, Vercel project, folder, snapshot and bypass env names, proof command, and its two customers. A customer id alone gives the product.
+
+| Product | Vendor | Customers | Repo and folder |
+|---|---|---|---|
+| Dispatch Board | Relaytrack | Mesa Lane Freight, Pinecrest Logistics | `EvolveHack/dispatch-board`, repo root |
+| Helpdesk Agent | Northpeak | Lumen Analytics, Cedar Health | `EvolveHack/factory-apps`, `products/helpdesk` |
+| Order Flows | Tallyflow | Granite Supply, Bluewater Distributors | `EvolveHack/factory-apps`, `products/orders` |
+| Cold Chain Monitor | Frostline | FreshFare Markets, Northgate Warehousing | `EvolveHack/factory-apps`, `products/coldchain` |
+| Shopping App | Cartwise | Willow Pine Home, Summit Outdoor | `EvolveHack/factory-apps`, `products/shop` |
+
+- **Call:** the agent asks for the company and confirms it with its product. The server maps the spoken name to a customer, allowing short forms and small slips ("Mesa", "Fresh Fair").
+- **Facts:** adds `controlsDevices` (setpoints, defrost, locks, motors; alerts and reports are not device control). `displayOnly` now means the change, or a self-contained new feature, stays inside the caller's own product for that customer and touches no money, access, devices, outside systems, or other customers. An outside system (accounting, email to outsiders, EDI) is `newScreenOrConnection`.
+- **Rules order:** R1 access, R2 money, **R6 devices (safety lead)**, R3 data, R4 every customer or outside connection, R5 goes live, DEFAULT product owner. Each reason names the customer and the product.
+- **Builder:** everything comes from the registry. "Goes live" may edit only `tenantDir(customer)/` (never a `billing.json`). "Needs a person" may edit the product's folder, including the other tenant, but never another product's folder or `contract/`. Merges are one at a time **per repo**. If `package-lock.json` changed since the snapshot, the build runs `npm ci` first.
+- **Checks:** Dispatch Board keeps the fast `view.json` check, the Haiku check, and the other-customer table compare. The other four products run their `proof.mjs` for the caller and for the other customer of the same product, then the Haiku done-when check (test ids from `products/<p>/TESTIDS.md`).
+- **Floor:** each ticket shows the product (small) and the customer. Live tickets open the product's site and offer **Roll out to everyone**, which files a new ask for every customer of that product. It goes to the product owner at the gate like any other ask.
+
 ## 1. Problem
 
 Software vendors that sell to businesses get a steady stream of small asks from their customers. A freight broker wants late loads shown in red. A contractor wants its estimate table in a different order. A credit union wants a field renamed. Each ask is ten minutes of work, and each one matters to that customer's daily routine.
@@ -68,6 +87,7 @@ The agent reads the call and pulls out facts. Each fact must quote the caller's 
 |---|---|---|---|
 | R1 | changes who can see what: shippers, carriers, or another customer | Needs a person | Security lead |
 | R2 | touches money: rates, margins, detention, charges, or invoices | Needs a person | Engineering lead |
+| R6 | changes how physical devices behave: setpoints, defrost, locks, motors (checked after R2) | Needs a person | Safety lead |
 | R3 | changes saved data, calculations, or validation | Needs a person | Engineering lead |
 | R4 | applies to every customer, adds a new screen or connection (such as EDI or truck tracking), or anything is "unknown" | Needs a person | Product owner |
 | R5 | only changes how the caller's own board looks: columns, labels, filters, sorting, colors, highlights, layout | **Goes live** for that customer | None |
@@ -226,7 +246,7 @@ Other hackers call in during the event as either customer, so both boards change
 ## 14. Not built (for the deck's "next" slide)
 
 - Caller identity (checking the caller really works at the customer)
-- Many products, and more than two customers
+- More than two customers per product
 - Rules written from the vendor's own policy documents
 - Merging duplicate asks and settling conflicting ones
 - Data and database changes going live on their own

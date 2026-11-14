@@ -18,5 +18,11 @@ Only the owner edits this file. Read through `process.env`. Never hard-code a ke
 | `VERCEL_PROJECT_ID_DISPATCH` | W2 | `prj_j0A02YxdFJLkVEfwJpIraTLCOXq9` (set in Vercel) |
 | `ANTHROPIC_API_KEY` | W2 | For Claude Code running headless in the sandbox. |
 | `NEXT_PUBLIC_DISPATCH_BOARD_PROD_URL` | W3 | Same as `DISPATCH_BOARD_PROD_URL`, for the iframes. |
+| `SANDBOX_SNAPSHOT_ID` | W2 | Snapshot of `EvolveHack/dispatch-board` (`npx tsx scripts/sandbox-snapshot.ts`). |
+| `SANDBOX_SNAPSHOT_ID_APPS` | W2 | Snapshot of `EvolveHack/factory-apps` (`npx tsx scripts/sandbox-snapshot.ts factory-apps`). |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` | W2 | Preview bypass for the Dispatch Board project. |
+| `VERCEL_AUTOMATION_BYPASS_SECRET_APPS` | W2 | Preview bypass for the factory-apps project. |
+
+Since 11-14 (five products) the builder and floor screen read the repo, production address, and Vercel project from `contract/products.ts`. `DISPATCH_BOARD_REPO`, `DISPATCH_BOARD_PROD_URL`, `VERCEL_PROJECT_ID_DISPATCH`, and `NEXT_PUBLIC_DISPATCH_BOARD_PROD_URL` are no longer read. The snapshot and bypass names come from each product's `snapshotEnv` and `bypassEnv`.
 
 Phone-a-factory production: `https://phone-a-factory.vercel.app`. Dispatch Board production: `https://dispatch-board-six.vercel.app`. Both Vercel projects deploy from `main` on GitHub and build a preview for every pushed branch.

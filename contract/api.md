@@ -11,7 +11,12 @@ Only the owner edits this file. All JSON. Types are in `contract/types.ts`.
 | `POST /api/requests/[id]/decline` | W3 (floor) | Review card | `{ reason }` | `{ ok }` |
 | `POST /api/requests/[id]/undo` | W3 (floor) | Undo button | `{}` | `{ ok }`. Calls `undo(id)` from `lib/builder` |
 | `POST /api/requests/[id]/veto` | W3 (floor) | Veto button | `{}` | `{ ok }`. Calls `veto(id)` from `lib/builder` |
+| `POST /api/requests/[id]/rollout` | floor | "Roll out to everyone" on a live ticket | `{}` | `{ ok, requestId }`. Creates a new request for the same customer: ask "Make this available to every <product> customer: <original ask>", fact `appliesToEveryCustomer` true. Rules then send it to a person (R4, product owner, for a display change). 409 unless the original is `live`. |
 | `POST /api/build/next` | W2 | W1 after classifying; W2 itself after each build finishes | `{}` | `{ started, all }`. Starts queued requests (goes_live first, then oldest) until 3 are building, using `claimNextQueued()` so two calls never take the same request. `maxDuration = 800`. |
+
+## Five products
+
+`company` in the submit body may be any of the ten customers in `contract/products.ts` (full name or a short form). The product comes from the customer. When the name matches no customer, the reply has `requestId: null` and `say_to_caller` asks for the company again. Promote, undo, and veto use the repo and Vercel project of the request's product.
 
 ## Functions other workstreams call (signatures fixed here)
 
