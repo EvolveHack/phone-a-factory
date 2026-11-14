@@ -37,7 +37,6 @@ export async function classifyRequest(input: {
     schemaName: "Classification",
     schemaDescription: "Facts, quotes, and a content check for one Dispatch Board request",
     system: SYSTEM,
-    temperature: 0,
     maxOutputTokens: 800,
     maxRetries: 1,
     prompt: `Customer: ${input.customerName}
@@ -46,10 +45,15 @@ Caller words (copy every quote from this text only):
 ${input.callerWords}`,
   });
 
+  const [firstDone = "The change is visible on the caller's board.", secondDone = "The other customer's board is unchanged."] =
+    object.doneWhen;
   const classification: Classification = {
-    ...object,
-    contentReason: object.contentReason ?? undefined,
+    askOneLine: object.askOneLine,
+    doneWhen: [firstDone, secondDone],
+    area: object.area,
     facts: enforceQuotes(object.facts, input.callerWords),
+    contentOk: object.contentOk,
+    contentReason: object.contentReason ?? undefined,
   };
   return rejectClearAbuse(classification, `${input.callerWords}\n${input.ask}`);
 }

@@ -7,7 +7,7 @@ const factSchema = z.object({
 
 export const classificationSchema = z.object({
   askOneLine: z.string(),
-  doneWhen: z.tuple([z.string(), z.string()]),
+  doneWhen: z.array(z.string()).length(2),
   area: z.enum(["loads_table", "map", "exceptions", "other"]),
   facts: z.object({
     changesAccess: factSchema,
