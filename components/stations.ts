@@ -28,6 +28,16 @@ export function stationOf(request: FactoryRequest): StationId | null {
   return STATION_OF[request.status] ?? null;
 }
 
+/** How far along the line a ticket got (0 = Call, 5 = Live), even after it left the line. */
+export function reachedIndex(request: FactoryRequest): number {
+  let reached = 0;
+  for (const status of Object.keys(request.statusTimes) as Status[]) {
+    const station = STATION_OF[status];
+    if (station) reached = Math.max(reached, STATIONS.findIndex((s) => s.id === station));
+  }
+  return reached;
+}
+
 /** Finished tickets that left the line, newest first. */
 export const OFF_LINE: Status[] = ["declined", "rejected", "vetoed", "undone", "failed"];
 
@@ -37,5 +47,5 @@ const HUES = ["#ff3d14", "#3ddc97", "#5b8cff", "#ffb020", "#d46bff", "#2ec5d3", 
 export function customerColor(id: CustomerId): string {
   const index = CUSTOMER_IDS.indexOf(id);
   const at = index >= 0 ? index : [...id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-  return HUES[at % HUES.length];
+  return `color-mix(in oklab, ${HUES[at % HUES.length]} var(--hue-keep), black)`;
 }

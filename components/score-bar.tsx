@@ -17,20 +17,20 @@ export function ScoreBar({ score }: { score: Score }) {
 
 function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
-    <div className="min-w-0 border-t border-white/15 pt-3">
+    <div className="min-w-0 border-t border-fg/15 pt-4">
       <p className="flex items-baseline gap-2">
         <motion.span
           key={value}
           initial={{ y: 12, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ type: "spring", stiffness: 300, damping: 22 }}
-          className="font-[family-name:var(--font-display)] text-[44px] font-medium leading-none tabular-nums text-[#ff3d14]"
+          className="font-[family-name:var(--font-display)] text-[34px] font-medium leading-none tabular-nums text-accent"
         >
           {value}
         </motion.span>
-        {note ? <span className="text-[18px] text-white/50">{note}</span> : null}
+        {note ? <span className="text-[15px] text-fg/50">{note}</span> : null}
       </p>
-      <p className="mt-1.5 text-[14px] uppercase tracking-[0.12em] text-white/50">{label}</p>
+      <p className="mt-2 text-[12px] uppercase tracking-[0.12em] text-fg/50">{label}</p>
     </div>
   );
 }

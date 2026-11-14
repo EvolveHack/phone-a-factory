@@ -3,7 +3,9 @@ import type {
   BuildStep,
   BuildStepName,
   Ending,
+  Facts,
   FactoryRequest,
+  RuleId,
   Status,
 } from "@/contract/types";
 import { APPROVERS } from "@/contract/types";
@@ -139,3 +141,51 @@ export function queueWait(request: FactoryRequest, requests: FactoryRequest[]): 
   const before = building + ahead;
   return `Waiting for ${before} ${before === 1 ? "build" : "builds"} ahead. About ${minutes} min.`;
 }
+
+/** One line that says what is happening to an ask right now. */
+export function statusLine(request: FactoryRequest, steps: BuildStep[], requests: FactoryRequest[]): string {
+  switch (request.status) {
+    case "received":
+    case "classified":
+      return "Reading the ask.";
+    case "queued":
+      return queueWait(request, requests) ?? "Waiting to build.";
+    case "building":
+      return "An agent is making the change.";
+    case "checking": {
+      const shown = visibleSteps(steps, request.id);
+      const last = shown[shown.length - 1];
+      return last ? STEP_LABEL[last.step] : "Starting checks.";
+    }
+    case "waiting_for_approval":
+      return request.rule?.approver ? `Waiting for the ${APPROVERS[request.rule.approver].toLowerCase()}.` : "Waiting for a person.";
+    case "approved":
+      return "Approved. Going live.";
+    case "live":
+      return "Live. Other customers unchanged.";
+    default:
+      return `${STATUS_LABEL[request.status]}.`;
+  }
+}
+
+/** What each fact from the call means, in the order the rules read them. */
+export const FACT_LABEL: Record<keyof Facts, string> = {
+  changesAccess: "Changes who can see what",
+  touchesMoney: "Touches money",
+  controlsDevices: "Changes how physical devices behave",
+  changesDataOrCalculation: "Changes saved data or a calculation",
+  appliesToEveryCustomer: "Applies to every customer",
+  newScreenOrConnection: "Adds a shared screen or an outside connection",
+  displayOnly: "Only changes the caller's own product",
+};
+
+/** The rules in the order they are read. The first one that fits wins. */
+export const RULES: { id: RuleId; when: string; ending: Ending; approver: ApproverRole | null }[] = [
+  { id: "R1", when: "The ask changes who can see what.", ending: "needs_person", approver: "security_lead" },
+  { id: "R2", when: "The ask touches money.", ending: "needs_person", approver: "engineering_lead" },
+  { id: "R6", when: "The ask changes how physical devices behave.", ending: "needs_person", approver: "safety_lead" },
+  { id: "R3", when: "The ask changes saved data or a calculation.", ending: "needs_person", approver: "engineering_lead" },
+  { id: "R4", when: "The ask reaches beyond the caller's own product.", ending: "needs_person", approver: "product_owner" },
+  { id: "R5", when: "The ask only changes the caller's own product.", ending: "goes_live", approver: null },
+  { id: "DEFAULT", when: "The ask is unclear.", ending: "needs_person", approver: "product_owner" },
+];
