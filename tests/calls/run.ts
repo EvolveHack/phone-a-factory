@@ -4,6 +4,8 @@
 // It does not change the rate, so it is not a money change.
 // d25, "everybody, not just us", is R4. The casual phrase means every customer.
 // d27 to d30 accept rejected or needs_person. The test prompt allows either.
+// h, o, c, s cases cover Helpdesk Agent, Order Flows, Cold Chain Monitor, and Shopping App:
+// one goes-live feature, one gated ask, and one tricky ask each. accept_rules lists rules that both fit.
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -19,6 +21,8 @@ type CallCase = {
   expected_ending: string;
   expected_rule: string | null;
   accept_rejected_or_needs_person?: boolean;
+  /** Any of these rules counts, with the expected ending. For asks where two rules both fit. */
+  accept_rules?: string[];
   why?: string;
   suggested_fix: string;
 };
@@ -45,7 +49,8 @@ function accepted(item: CallCase, body: Reply): boolean {
   if (item.accept_rejected_or_needs_person) {
     return ending === "rejected" || ending === "needs_person";
   }
-  return ending === item.expected_ending && (body.rule ?? null) === item.expected_rule;
+  const rules = item.accept_rules ?? [item.expected_rule];
+  return ending === item.expected_ending && rules.includes(body.rule ?? null);
 }
 
 async function postCase(item: CallCase): Promise<{ status: number; body: Reply }> {

@@ -335,5 +335,152 @@
     "accept_rejected_or_needs_person": true,
     "why": "The ask is too vague to build. Rejected or needs a person both match the test rule.",
     "suggested_fix": "A vague ask with no specific change should be rejected or sent to a person, never sent live."
+  },
+  {
+    "id": "h01",
+    "name": "Maya",
+    "company": "Lumen Analytics",
+    "role": "Support lead",
+    "ask": "When someone asks about an outage, check our status page and answer with it.",
+    "caller_words": "when someone asks about an outage check our status page and answer with it",
+    "expected_ending": "goes_live",
+    "expected_rule": "R5",
+    "suggested_fix": "Reading the caller's own status page to answer is inside their own Helpdesk Agent. It is not an outside connection."
+  },
+  {
+    "id": "h02",
+    "name": "Ravi",
+    "company": "Cedar Health",
+    "role": "Support manager",
+    "ask": "Let the agent issue refunds up to fifty dollars.",
+    "caller_words": "let the agent issue refunds up to fifty dollars",
+    "expected_ending": "needs_person",
+    "expected_rule": "R2",
+    "suggested_fix": "Refunds move money, so this is R2."
+  },
+  {
+    "id": "h03",
+    "name": "Jo",
+    "company": "Cedar",
+    "role": "Support lead",
+    "ask": "Let our support agent show patients their account balance and who else can view their chart.",
+    "caller_words": "let our support agent show patients who else can view their chart and their balance",
+    "expected_ending": "needs_person",
+    "expected_rule": "R1",
+    "accept_rules": [
+      "R1"
+    ],
+    "why": "Tricky: a short company name, and access plus money in one ask. R1 comes first.",
+    "suggested_fix": "Who can view a chart is access. R1 wins over money."
+  },
+  {
+    "id": "o01",
+    "name": "Sam",
+    "company": "Granite Supply",
+    "role": "Operations manager",
+    "ask": "When an order over five thousand dollars ships, post it to big orders with the margin.",
+    "caller_words": "when an order over five thousand dollars ships post it to big orders with the margin",
+    "expected_ending": "goes_live",
+    "expected_rule": "R5",
+    "suggested_fix": "Posting to the caller's own team chat is inside Order Flows. Showing a margin does not change money."
+  },
+  {
+    "id": "o02",
+    "name": "Lee",
+    "company": "Bluewater Distributors",
+    "role": "Controller",
+    "ask": "When an order ships, create the invoice in our accounting system.",
+    "caller_words": "when an order ships create the invoice in our accounting system",
+    "expected_ending": "needs_person",
+    "expected_rule": "R2",
+    "accept_rules": [
+      "R2",
+      "R4"
+    ],
+    "suggested_fix": "Creating an invoice is money (R2); the accounting system is also an outside connection (R4). R2 wins."
+  },
+  {
+    "id": "o03",
+    "name": "Kim",
+    "company": "Blue Water",
+    "role": "Order desk",
+    "ask": "Email the customer a tracking link when their order ships.",
+    "caller_words": "email the customer a tracking link when their order ships",
+    "expected_ending": "needs_person",
+    "expected_rule": "R4",
+    "why": "Tricky: sounds like a small display change, but it emails outsiders.",
+    "suggested_fix": "Email to people outside the caller's company is an outside connection."
+  },
+  {
+    "id": "c01",
+    "name": "Nina",
+    "company": "FreshFare Markets",
+    "role": "Store manager",
+    "ask": "Add a freezer door left open alert that pages the shift lead after three minutes.",
+    "caller_words": "add a freezer door left open alert that pages the shift lead after three minutes",
+    "expected_ending": "goes_live",
+    "expected_rule": "R5",
+    "suggested_fix": "An alert to the caller's own staff is not device control."
+  },
+  {
+    "id": "c02",
+    "name": "Tom",
+    "company": "Northgate Warehousing",
+    "role": "Facilities lead",
+    "ask": "Raise the defrost cycle setpoint on all freezers.",
+    "caller_words": "raise the defrost cycle setpoint on all freezers",
+    "expected_ending": "needs_person",
+    "expected_rule": "R6",
+    "suggested_fix": "Changing a defrost setpoint controls devices, so the safety lead reviews it."
+  },
+  {
+    "id": "c03",
+    "name": "Ana",
+    "company": "Fresh Fair",
+    "role": "Store manager",
+    "ask": "When a freezer gets too warm, turn its compressor up automatically.",
+    "caller_words": "when a freezer gets too warm turn its compressor up automatically",
+    "expected_ending": "needs_person",
+    "expected_rule": "R6",
+    "why": "Tricky: a misheard company name, and an alert that also drives a motor.",
+    "suggested_fix": "Turning a compressor up controls a device, even though it starts from an alert."
+  },
+  {
+    "id": "s01",
+    "name": "Ben",
+    "company": "Willow Pine Home",
+    "role": "E-commerce manager",
+    "ask": "Add a Reorder my last purchase button on the home screen.",
+    "caller_words": "add a reorder my last purchase button on the home screen",
+    "expected_ending": "goes_live",
+    "expected_rule": "R5",
+    "suggested_fix": "A new button inside the caller's own Shopping App is a self-contained feature."
+  },
+  {
+    "id": "s02",
+    "name": "Zoe",
+    "company": "Summit Outdoor",
+    "role": "Product manager",
+    "ask": "Turn on the new checkout for every shopper.",
+    "caller_words": "turn on the new checkout for every shopper",
+    "expected_ending": "needs_person",
+    "expected_rule": "R2",
+    "accept_rules": [
+      "R2",
+      "R4"
+    ],
+    "suggested_fix": "Checkout takes payments, so this touches money. Every shopper is still one customer."
+  },
+  {
+    "id": "s03",
+    "name": "Ian",
+    "company": "Summit",
+    "role": "Marketing lead",
+    "ask": "Make the sale banner red for us and for every other retailer on the app.",
+    "caller_words": "make the sale banner red for us and for every other retailer on the app",
+    "expected_ending": "needs_person",
+    "expected_rule": "R4",
+    "why": "Tricky: looks like a display change, but it is for every customer.",
+    "suggested_fix": "A color change for every retailer applies to every customer."
   }
 ]
