@@ -86,7 +86,7 @@ async function prepareRepo(ctx: Ctx): Promise<void> {
   await commandMust(ctx.sandbox, { cmd: "git", args: ["config", "user.email", "builder@phone-a-factory.local"], cwd: ctx.cwd }, "Could not set the git email.");
   await commandMust(ctx.sandbox, { cmd: "git", args: ["config", "user.name", "Phone a factory"], cwd: ctx.cwd }, "Could not set the git name.");
   await setOrigin(ctx.sandbox, ctx.cwd, true);
-  await commandMust(ctx.sandbox, { cmd: "git", args: ["fetch", "origin", "main"], cwd: ctx.cwd, timeoutMs: 60_000 }, "Could not fetch Dispatch Board.");
+  await commandMust(ctx.sandbox, { cmd: "git", args: ["fetch", "origin", "+refs/heads/main:refs/remotes/origin/main"], cwd: ctx.cwd, timeoutMs: 60_000 }, "Could not fetch Dispatch Board.");
   await commandMust(ctx.sandbox, { cmd: "git", args: ["checkout", "-B", "main", "origin/main"], cwd: ctx.cwd }, "Could not update main.");
   await commandMust(ctx.sandbox, { cmd: "git", args: ["checkout", "-B", branch], cwd: ctx.cwd }, "Could not create the branch.");
   await setOrigin(ctx.sandbox, ctx.cwd, false);
