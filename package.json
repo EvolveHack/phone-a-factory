@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@vercel/blob": "^2.9.0",
+    "@vercel/sandbox": "^4.0.0",
     "ai": "^7.0.173",
     "next": "15.5.29",
     "postgres": "^4.1.1",
