@@ -1,14 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { CustomerId } from "@/contract/view";
 import type { StateSnapshot } from "@/contract/types";
-import { BuildPanel } from "./build-panel";
-import { CustomerBoards } from "./customer-boards";
-import { newestFirst } from "./floor-copy";
-import { QueueList } from "./queue-list";
-import { ReviewPanel, type ReviewAction } from "./review-panel";
+import { FactoryLine } from "./factory-line";
+import { PHONE_LINE, safeBoardBase } from "./floor-copy";
+import { OutcomesStrip } from "./outcomes-strip";
 import { ScoreBar } from "./score-bar";
+import type { TicketAction } from "./ticket";
 
 function useNow(): number | null {
   return useSyncExternalStore(
@@ -21,17 +19,12 @@ function useNow(): number | null {
   );
 }
 
-const RELOAD_START: Record<CustomerId, number> = { "mesa-lane": 0, pinecrest: 0 };
-
 export function FloorScreen({ initial, boardUrl }: { initial: StateSnapshot; boardUrl: string }) {
   const [state, setState] = useState(initial);
   const [error, setError] = useState<string | null>(null);
-  const [flash, setFlash] = useState<Partial<Record<CustomerId, boolean>>>({});
-  const [reload, setReload] = useState(RELOAD_START);
-  const seen = useRef<Map<string, string> | null>(null);
-  const timers = useRef<Partial<Record<CustomerId, number>>>({});
   const gen = useRef(0);
   const now = useNow();
+  const boards = safeBoardBase(boardUrl);
 
   const pull = useCallback(async () => {
     const mine = ++gen.current;
@@ -53,35 +46,7 @@ export function FloorScreen({ initial, boardUrl }: { initial: StateSnapshot; boa
     return () => window.clearInterval(id);
   }, [pull]);
 
-  useEffect(() => {
-    const prev = seen.current;
-    if (prev) {
-      for (const request of state.requests) {
-        const before = prev.get(request.id);
-        if (request.status !== "live" || before === "live") continue;
-        const customer = request.customer;
-        setReload((current) => ({ ...current, [customer]: current[customer] + 1 }));
-        setFlash((current) => ({ ...current, [customer]: true }));
-        const existing = timers.current[customer];
-        if (existing) window.clearTimeout(existing);
-        timers.current[customer] = window.setTimeout(() => {
-          setFlash((current) => ({ ...current, [customer]: false }));
-        }, 3000);
-      }
-    }
-    seen.current = new Map(state.requests.map((request) => [request.id, request.status]));
-  }, [state]);
-
-  useEffect(() => {
-    const active = timers;
-    return () => {
-      for (const id of Object.values(active.current)) {
-        if (id) window.clearTimeout(id);
-      }
-    };
-  }, []);
-
-  async function onAction(id: string, action: ReviewAction, body?: { reason: string }) {
+  async function onAction(id: string, action: TicketAction, body?: { reason: string }) {
     const response = await fetch(`/api/requests/${encodeURIComponent(id)}/${action}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -91,26 +56,29 @@ export function FloorScreen({ initial, boardUrl }: { initial: StateSnapshot; boa
     await pull();
   }
 
-  const requests = newestFirst(state.requests);
-
   return (
-    <main className="relative grid h-screen grid-rows-[minmax(0,1.15fr)_minmax(0,1fr)_100px] overflow-hidden bg-[#05060a] font-sans text-white">
-      <CustomerBoards boardUrl={boardUrl} flash={flash} reload={reload} />
-      <div className="flex min-h-0 flex-col px-3 py-2">
-        {state.currentCallTranscript ? (
-          <p className="mb-2 truncate text-[22px]" data-floor-region="transcript">
-            {state.currentCallTranscript}
+    <main className="flex h-screen flex-col gap-5 overflow-hidden bg-[#0b0b0b] px-10 pt-8 pb-7 text-white">
+      <header className="flex items-end justify-between gap-8">
+        <div>
+          <p className="inline-flex items-center gap-3 rounded-full px-4 py-1.5 text-[13px] font-semibold uppercase tracking-[0.16em] ring-1 ring-white/30">
+            <span className="live-dot h-2 w-2 rounded-full bg-[#ff3d14]" aria-hidden />
+            <span className="text-[#ff3d14]">Live</span>
+            <span className="text-white/40">|</span>
+            <span>Phone-a-factory</span>
           </p>
-        ) : null}
-        <div className="grid min-h-0 flex-1 grid-cols-3 gap-3">
-          <QueueList requests={requests} now={now} />
-          <BuildPanel requests={requests.filter((r) => r.status === "building" || r.status === "checking" || r.status === "approved")} steps={state.steps} />
-          <ReviewPanel requests={requests} onAction={onAction} />
+          <h1 className="mt-4 font-[family-name:var(--font-display)] text-[56px] font-medium leading-none tracking-[-0.03em]">
+            Call in an order. Watch it ship.
+          </h1>
         </div>
-      </div>
-      {error ? (
-        <p className="absolute bottom-[100px] left-0 right-0 bg-red-950 px-4 py-1 text-[18px]">{error}</p>
-      ) : null}
+        <p className="shrink-0 rounded-2xl bg-[#ff3d14] px-7 py-4 font-[family-name:var(--font-display)] text-[46px] font-medium leading-none tracking-tight">
+          {PHONE_LINE}
+        </p>
+      </header>
+
+      <FactoryLine requests={state.requests} steps={state.steps} now={now} boardUrl={boards} onAction={onAction} />
+
+      <OutcomesStrip requests={state.requests} />
+      {error ? <p className="text-[15px] text-[#ff8a70]">{error}</p> : null}
       <ScoreBar score={state.score} />
     </main>
   );

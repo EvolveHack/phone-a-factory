@@ -82,15 +82,6 @@ export function secondsSince(iso: string, now: number): string {
   return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
 }
 
-const ACTIVE: Status[] = ["received", "classified", "queued", "building", "checking", "approved", "waiting_for_approval", "live"];
-
-/** Active asks first (newest first), then the newest finished ones, up to `limit` in all. */
-export function queueOrder(requests: FactoryRequest[], limit = 8): FactoryRequest[] {
-  const sorted = newestFirst(requests);
-  const active = sorted.filter((request) => ACTIVE.includes(request.status));
-  const done = sorted.filter((request) => !ACTIVE.includes(request.status));
-  return [...active, ...done].slice(0, Math.max(limit, active.length));
-}
 
 export function formatCallToLive(seconds: number | null): string {
   if (seconds == null) return "Not yet";
@@ -102,20 +93,6 @@ export function formatCallToLive(seconds: number | null): string {
 export function shareOf(part: number, whole: number): string {
   if (whole <= 0) return "0%";
   return `${Math.round((part / whole) * 100)}%`;
-}
-
-export function newestFirst(requests: FactoryRequest[]): FactoryRequest[] {
-  return [...requests].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-}
-
-export function currentBuild(requests: FactoryRequest[]): FactoryRequest | null {
-  const active = requests.filter((request) => request.status === "building" || request.status === "checking");
-  active.sort((a, b) => {
-    const aAt = a.statusTimes[a.status] ?? a.createdAt;
-    const bAt = b.statusTimes[b.status] ?? b.createdAt;
-    return bAt.localeCompare(aAt);
-  });
-  return active[0] ?? null;
 }
 
 /** Steps after "Other customer unchanged." stay off the floor screen. */
@@ -143,11 +120,6 @@ export function safeBoardBase(boardUrl: string): string | null {
   } catch {
     return null;
   }
-}
-
-export function boardSrc(base: string, path: string, reload: number): string {
-  const src = `${base}${path}`;
-  return reload > 0 ? `${src}?reload=${reload}` : src;
 }
 
 const PARALLEL = 3;

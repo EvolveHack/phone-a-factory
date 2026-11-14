@@ -1,0 +1,41 @@
+import type { FactoryRequest, Status } from "@/contract/types";
+import { CUSTOMER_IDS, type CustomerId } from "@/contract/view";
+
+export type StationId = "call" | "rules" | "build" | "checks" | "gate" | "live";
+
+export const STATIONS: { id: StationId; label: string; hint: string }[] = [
+  { id: "call", label: "Call", hint: "Heard and read back" },
+  { id: "rules", label: "Rules", hint: "Your rules pick the path" },
+  { id: "build", label: "Build", hint: "An agent makes the change" },
+  { id: "checks", label: "Checks", hint: "Build, folder, browser" },
+  { id: "gate", label: "Gate", hint: "A person decides" },
+  { id: "live", label: "Live", hint: "On that customer's board" },
+];
+
+const STATION_OF: Partial<Record<Status, StationId>> = {
+  received: "call",
+  classified: "call",
+  queued: "rules",
+  building: "build",
+  checking: "checks",
+  waiting_for_approval: "gate",
+  approved: "gate",
+  live: "live",
+};
+
+/** Where a ticket sits on the line, or null when it has left the line (declined, rejected, undone, vetoed). */
+export function stationOf(request: FactoryRequest): StationId | null {
+  return STATION_OF[request.status] ?? null;
+}
+
+/** Finished tickets that left the line, newest first. */
+export const OFF_LINE: Status[] = ["declined", "rejected", "vetoed", "undone", "failed"];
+
+const HUES = ["#ff3d14", "#3ddc97", "#5b8cff", "#ffb020", "#d46bff", "#2ec5d3", "#ff6fa3", "#a3d93b"];
+
+/** A steady color per customer, so 20 customers stay easy to tell apart. */
+export function customerColor(id: CustomerId): string {
+  const index = CUSTOMER_IDS.indexOf(id);
+  const at = index >= 0 ? index : [...id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  return HUES[at % HUES.length];
+}
