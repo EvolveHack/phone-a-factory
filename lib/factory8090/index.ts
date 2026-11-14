@@ -1,6 +1,6 @@
 // 8090 External API. Failures are logged and never thrown. The local store stays the source for the screen.
 import { customerInfo, productOf } from "@/contract/products";
-import type { FactoryRequest } from "@/contract/types";
+import { APPROVERS, type FactoryRequest } from "@/contract/types";
 
 type Config = { base: string; key: string; projectId: string };
 
@@ -74,6 +74,51 @@ export async function addComment(workOrderId: string, text: string): Promise<voi
   } catch (err) {
     console.error("8090 addComment failed", err instanceof Error ? err.message : err);
   }
+}
+
+export type Outcome = "live" | "declined" | "undone" | "vetoed";
+
+/** Move the work order to Completed or Cancelled and say why in a comment. */
+export async function setOutcome(r: FactoryRequest, outcome: Outcome): Promise<void> {
+  try {
+    const cfg = readConfig();
+    if (!cfg || !r.workOrder8090Id) return;
+    const status = outcome === "live" ? "completed" : "cancelled";
+    const res = await call8090(cfg, "/work_orders/batch_update", {
+      method: "POST",
+      body: {
+        request_id: `${r.workOrder8090Id}-${outcome}`,
+        operations: [
+          {
+            operation_id: "status",
+            operation_type: "UpdateStatus",
+            target: { work_order_id: r.workOrder8090Id },
+            patch: { status },
+          },
+        ],
+      },
+    });
+    if (!res || res.status !== 200) {
+      console.error("8090 status update failed", res?.status ?? "no response", short(res?.body));
+    }
+    await addComment(r.workOrder8090Id, outcomeText(r, outcome));
+  } catch (err) {
+    console.error("8090 setOutcome failed", err instanceof Error ? err.message : err);
+  }
+}
+
+function outcomeText(r: FactoryRequest, outcome: Outcome): string {
+  if (outcome === "live") {
+    const preview = r.previewUrl ? ` Preview: ${r.previewUrl}.` : "";
+    return `Live for ${customerInfo(r.customer).name}.${preview}`;
+  }
+  if (outcome === "declined") {
+    const approver = r.rule?.approver ? APPROVERS[r.rule.approver] : "the approver";
+    const reason = r.statusReason ? ` Reason: ${r.statusReason}` : "";
+    return `Declined by ${approver}.${reason}`;
+  }
+  if (outcome === "undone") return "Undone. The change was removed.";
+  return "Stopped before it went live.";
 }
 
 function readConfig(): Config | null {

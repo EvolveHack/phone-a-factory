@@ -1,5 +1,5 @@
 // OWNED BY W2. Signatures are fixed in contract/api.md.
-import { linkPullRequest } from "@/lib/factory8090";
+import { linkPullRequest, setOutcome } from "@/lib/factory8090";
 import { promoteDeployment, waitForDeploy } from "@/lib/builder/deploy";
 import { closePullRequest, mergePullRequest, revertPullRequestOnMain } from "@/lib/builder/github";
 import { stopSandbox } from "@/lib/builder/sandbox";
@@ -68,8 +68,9 @@ export async function promote(requestId: string): Promise<void> {
       return;
     }
     await addStep({ requestId, step: "promoted", status: "passed", log: "Production is updated." });
-    await setStatus(requestId, "live");
+    const live = await setStatus(requestId, "live");
     await linkWorkOrder(request);
+    await setOutcome(live, "live");
   } catch (error) {
     const current = await getRequest(requestId);
     if (current && current.status !== "live" && current.status !== "vetoed") {
@@ -108,7 +109,8 @@ export async function undo(requestId: string): Promise<void> {
     const deploy = await waitForDeploy({ projectId: product.vercelProjectId, sha, target: "production", timeoutMs: 180_000 });
     await promoteDeployment(product.vercelProjectId, deploy.id);
   });
-  await setStatus(requestId, "undone", `The change was removed from the code, and ${product.name} was updated. Other changes stay live.`);
+  const undone = await setStatus(requestId, "undone", `The change was removed from the code, and ${product.name} was updated. Other changes stay live.`);
+  await setOutcome(undone, "undone");
 }
 
 export async function veto(requestId: string): Promise<void> {
@@ -123,5 +125,6 @@ export async function veto(requestId: string): Promise<void> {
     break;
   }
   if (request.pullRequestUrl) await closePullRequest(productOf(request.customer).repo, request.pullRequestUrl).catch(() => undefined);
-  await setStatus(requestId, "vetoed", "The build was stopped.");
+  const vetoed = await setStatus(requestId, "vetoed", "The build was stopped.");
+  await setOutcome(vetoed, "vetoed");
 }

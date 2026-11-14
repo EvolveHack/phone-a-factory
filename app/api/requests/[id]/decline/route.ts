@@ -1,3 +1,4 @@
+import { setOutcome } from "@/lib/factory8090";
 import { setStatus } from "@/lib/store";
 import { NextResponse } from "next/server";
 import { finish } from "../finish";
@@ -19,6 +20,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   return finish(async () => {
     const { id } = await context.params;
-    await setStatus(id, "declined", reason);
+    await setOutcome(await setStatus(id, "declined", reason), "declined");
   });
 }
