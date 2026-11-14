@@ -1,4 +1,5 @@
 import { repoSlug, required } from "@/lib/builder/env";
+import { diff3Merge } from "node-diff3";
 import { oneLine, redact } from "@/lib/builder/text";
 
 type Pull = {
@@ -91,36 +92,50 @@ async function fileOn(path: string, ref: string): Promise<Content | null> {
   return res.status === 200 ? res.data : null;
 }
 
-/** Put every file a merged pull request changed back to how it was before, as new commits on main. */
+const decode = (c: Content | null): string | null => (c?.content ? Buffer.from(c.content, "base64").toString("utf8") : null);
+const encode = (text: string): string => Buffer.from(text, "utf8").toString("base64");
+
+/** Undo only this change's own lines, the way `git revert` does: the reverse of the change is merged into the
+ *  file as it is now, so later changes to the same file stay. Returns the last commit made on main. */
 export async function revertPullRequestOnMain(url: string): Promise<string | null> {
   const number = pullNumber(url);
   const pull = await github<Pull>(`/pulls/${number}`);
   const mergeSha = pull.data.merge_commit_sha;
   if (pull.status !== 200 || !pull.data.merged || !mergeSha) return null;
-  let last: string | null = null;
   const commit = await github<Commit>(`/commits/${mergeSha}`);
   const parent = commit.data.parents?.[0]?.sha;
   if (commit.status !== 200 || !parent) throw new Error("Could not read the change to undo.");
+  let last: string | null = null;
   for (const file of commit.data.files ?? []) {
-    const paths = file.previous_filename ? [file.previous_filename, file.filename] : [file.filename];
-    for (const path of paths) {
-      const before = await fileOn(path, parent);
-      const now = await fileOn(path, "main");
-      const encoded = path.split("/").map(encodeURIComponent).join("/");
-      const message = `Undo #${number}: restore ${path}`;
-      if (before?.content) {
-        const res = await github<{ commit?: { sha?: string } }>(`/contents/${encoded}`, {
-          method: "PUT",
-          body: { message, content: before.content.replace(/\n/g, ""), sha: now?.sha, branch: "main" },
-        });
-        if (res.status !== 200 && res.status !== 201) throw new Error(`Could not restore ${path} (${res.status}).`);
-        last = res.data.commit?.sha ?? last;
-      } else if (now?.sha) {
-        const res = await github<{ commit?: { sha?: string } }>(`/contents/${encoded}`, { method: "DELETE", body: { message, sha: now.sha, branch: "main" } });
-        if (res.status !== 200) throw new Error(`Could not remove ${path} (${res.status}).`);
-        last = res.data.commit?.sha ?? last;
+    const path = file.filename;
+    const encoded = path.split("/").map(encodeURIComponent).join("/");
+    const message = `Undo #${number}: ${path}`;
+    const beforeText = decode(await fileOn(file.previous_filename ?? path, parent));
+    const afterText = decode(await fileOn(path, mergeSha));
+    const nowFile = await fileOn(path, "main");
+    const nowText = decode(nowFile);
+    let next: string | null;
+    if (nowText === afterText) {
+      next = beforeText; // Nothing changed this file since: put it back as it was.
+    } else if (nowText != null && afterText != null && beforeText != null) {
+      const merged = diff3Merge(nowText.split("\n"), afterText.split("\n"), beforeText.split("\n"));
+      if (merged.some((part) => "conflict" in part && part.conflict)) {
+        throw new Error(`A newer change edited the same lines of ${path}, so this one cannot be undone on its own.`);
       }
+      next = merged.flatMap((part) => ("ok" in part && part.ok ? part.ok : [])).join("\n");
+    } else {
+      throw new Error(`${path} was moved or removed since this change, so it cannot be undone on its own.`);
     }
+    if (next === nowText) continue;
+    const res =
+      next == null
+        ? await github<{ commit?: { sha?: string } }>(`/contents/${encoded}`, { method: "DELETE", body: { message, sha: nowFile?.sha, branch: "main" } })
+        : await github<{ commit?: { sha?: string } }>(`/contents/${encoded}`, {
+            method: "PUT",
+            body: { message, content: encode(next), sha: nowFile?.sha, branch: "main" },
+          });
+    if (res.status !== 200 && res.status !== 201) throw new Error(`Could not undo ${path} (${res.status}).`);
+    last = res.data.commit?.sha ?? last;
   }
   return last;
 }
