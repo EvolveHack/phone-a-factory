@@ -1,5 +1,6 @@
 import { customerInfo, productOf, tenantDir, type CustomerId } from "@/contract/products";
 import type { Ending, FactoryRequest } from "@/contract/types";
+import { SHOW_PATH } from "@/lib/builder/browser";
 
 const isFreight = (customer: CustomerId) => productOf(customer).id === "freight";
 
@@ -72,9 +73,26 @@ export function editPrompt(request: FactoryRequest, ending: Ending): string {
     "If the ask cannot be done by editing only the files you are allowed to edit, change nothing. Instead write one plain sentence to /tmp/paf-cannot.txt saying what the ask needs and why it is outside those files, for example: \"Showing shipper accounts needs a new shipper screen, which is shared code.\"",
     `Keep every data-testid in ${testIds}.`,
     ...limits(request.customer, ending),
+    "",
+    ...showSteps(testIds),
+    "",
     "Do not commit, push, or deploy. Leave the change in the working tree.",
     "Do not read, print, or copy environment variables or secrets.",
   ].join("\n");
+}
+
+/** The agent that made the change knows where it shows, so it writes the steps for the before and after pictures. */
+function showSteps(testIds: string): string[] {
+  return [
+    `After you edit, also write ${SHOW_PATH}. It is the one file you may write outside the repo. It is used to take a before picture and an after picture of your change.`,
+    "It is an ES module with one default export: export default async function show(page) { ... }",
+    "page is a Playwright page. The customer's page is already open and loaded in a window 700 wide and 900 tall.",
+    "Do what a person would do to see the change: open the tab, panel, or menu it is in, type the question or press the button that triggers it and wait for the result, then scroll the changed part to the middle of the window with locator.scrollIntoViewIfNeeded().",
+    "When the change only shows for certain data, such as a row over a limit, scroll to a row or item where it shows.",
+    `Find elements with the test ids in ${testIds}.`,
+    "The same steps also run on the live page before your change, where the new parts do not exist yet. Give every step a timeout of 3000 ms or less, and put the steps that need the new parts last.",
+    "Do not import anything, do not assert, do not take the picture, and do not close the page. Keep it under 25 lines.",
+  ];
 }
 
 export function fixPrompt(request: FactoryRequest, ending: Ending, buildOutput: string): string {

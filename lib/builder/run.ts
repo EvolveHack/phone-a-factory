@@ -249,12 +249,12 @@ async function shoot(ctx: Ctx, page: string, outPath: string): Promise<Buffer> {
 async function saveScreenshots(ctx: Ctx, previewPage: string): Promise<void> {
   const before = await shoot(ctx, pageUrl(ctx.product.prodUrl, ctx.request.customer), "/tmp/paf-before.png");
   const after = await shoot(ctx, previewPage, "/tmp/paf-after.png");
-  const [beforeBlob, afterBlob] = await Promise.all([
-    put(`screenshots/${ctx.request.id}/before.png`, before, { access: "public", contentType: "image/png", addRandomSuffix: true }),
-    put(`screenshots/${ctx.request.id}/after.png`, after, { access: "public", contentType: "image/png", addRandomSuffix: true }),
-  ]);
+  const save = (name: string, bytes: Buffer) =>
+    put(`screenshots/${ctx.request.id}/${name}.png`, bytes, { access: "public", contentType: "image/png", addRandomSuffix: true });
+  // Two identical pictures say nothing, so keep only "after". The ask page then shows one picture and no switch.
+  const [beforeBlob, afterBlob] = await Promise.all([before.equals(after) ? null : save("before", before), save("after", after)]);
   await updateRequest(ctx.request.id, {
-    screenshotBeforeUrl: beforeBlob.url,
+    screenshotBeforeUrl: beforeBlob?.url ?? null,
     screenshotAfterUrl: afterBlob.url,
   });
   ctx.screenshotsSaved = true;

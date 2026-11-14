@@ -56,20 +56,39 @@ try {
 }
 `;
 
-/** ROOT_SELECTOR set (Dispatch Board): shoot that element. Not set: shoot the page once it has loaded. */
+/** Where the editing agent leaves the steps that bring its change into view. */
+export const SHOW_PATH = "/tmp/paf-show.mjs";
+
+/**
+ * Takes one picture of the customer's page.
+ * When the agent left show steps, run them first and shoot the window, so the picture is of the change.
+ * The same steps run on the live page for "before", where the change may not exist, so a failed step is not an error.
+ * No show steps: shoot the board element (Dispatch Board, ROOT_SELECTOR set) or the loaded page.
+ */
 export const screenshotScript = `${LAUNCH}
+import { existsSync } from "node:fs";
 try {
   const page = await browser.newPage({ viewport: { width: 700, height: 900 } });
   await page.setExtraHTTPHeaders(bypassHeaders());
   await page.goto(process.env.PAGE_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
   const root = process.env.ROOT_SELECTOR;
-  if (root) {
-    await page.waitForSelector(root, { timeout: 30000 });
-    await page.locator(root).screenshot({ path: process.env.OUT_PATH });
-  } else {
-    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => undefined);
-    await page.screenshot({ path: process.env.OUT_PATH });
+  if (root) await page.waitForSelector(root, { timeout: 30000 });
+  else await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => undefined);
+  const hasShow = existsSync("${SHOW_PATH}");
+  if (hasShow) {
+    try {
+      const { default: show } = await import("${SHOW_PATH}");
+      await Promise.race([
+        show(page),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("The show steps took too long.")), 25000)),
+      ]);
+    } catch (error) {
+      console.log("SHOW_STOPPED " + (error instanceof Error ? error.message : String(error)));
+    }
+    await page.waitForTimeout(400);
   }
+  if (root && !hasShow) await page.locator(root).screenshot({ path: process.env.OUT_PATH });
+  else await page.screenshot({ path: process.env.OUT_PATH });
   await browser.close();
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
