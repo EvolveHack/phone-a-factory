@@ -231,7 +231,19 @@ export async function runBuild(requestId: string): Promise<void> {
 
     await begin(ctx, "folder_check", "Checking that only allowed files changed.");
     const files = await changedFiles(ctx);
-    if (files.length === 0) throw new Error("The agent did not change any files.");
+    if (files.length === 0) {
+      const note = await commandOutput(ctx.sandbox!, { cmd: "bash", args: ["-c", "cat /tmp/paf-cannot.txt 2>/dev/null | head -c 400"] });
+      const why = note.out.replace(/\s+/g, " ").trim();
+      const reason = why
+        ? `${why} The product owner decides what to do next.`
+        : "The agent found no safe change to make in this customer's files. The product owner decides what to do next.";
+      if (ctx.request.rule) {
+        await updateRequest(ctx.request.id, {
+          rule: { ...ctx.request.rule, ending: "needs_person", approver: "product_owner", reason },
+        });
+      }
+      throw new Error(reason);
+    }
     const blocked = files.filter((file) => !fileAllowed(file, ctx.request.customer, ctx.ending));
     if (blocked.length > 0) {
       throw new Error(`The change edited files outside the allowed folders: ${blocked.join(", ")}.`);
