@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { CustomerId } from "../../contract/view";
 import type { Fact, Facts } from "../../contract/types";
 // Node's test runner loads this file directly and needs the .ts extension.
 // @ts-expect-error TS5097: allowImportingTsExtensions is off for the Next app.
 import { applyRules } from "./apply.ts";
+// @ts-expect-error TS5097: see above.
+import { customerInfo, productOf } from "../../contract/products.ts";
+
+type CustomerId = "mesa-lane" | "pinecrest" | "lumen" | "cedar" | "granite" | "bluewater" | "freshfare" | "northgate" | "willow" | "summit";
 
 const no: Fact = { value: false, quote: "the board" };
 const yes: Fact = { value: true, quote: "the board" };
@@ -17,21 +20,23 @@ function facts(over: Partial<Facts> = {}): Facts {
     changesDataOrCalculation: no,
     appliesToEveryCustomer: no,
     newScreenOrConnection: no,
+    controlsDevices: no,
     displayOnly: no,
     ...over,
   };
 }
 
 function expectRule(customer: CustomerId, over: Partial<Facts>, rule: string, ending: string, approver: string | null) {
-  const result = applyRules(facts(over), customer);
+  const names = { customer: customerInfo(customer).name as string, product: productOf(customer).name as string };
+  const result = applyRules(facts(over), names);
   assert.equal(result.rule, rule);
   assert.equal(result.ending, ending);
   assert.equal(result.approver, approver);
   assert.equal(result.reason.endsWith("."), true);
   assert.equal(result.reason.includes("."), true);
   assert.equal(result.reason.slice(0, -1).includes("."), false);
-  const name = customer === "mesa-lane" ? "Mesa Lane" : "Pinecrest";
-  assert.equal(result.reason.includes(name), true);
+  assert.equal(result.reason.includes(names.customer), true);
+  assert.equal(result.reason.includes(names.product), true);
   return result;
 }
 
@@ -87,12 +92,48 @@ test("R4 unknown when it may apply to every customer", () => {
 
 test("R5 display-only goes live with no approver", () => {
   const result = expectRule("mesa-lane", { displayOnly: yes }, "R5", "goes_live", null);
-  assert.equal(result.reason, "This only changes how Mesa Lane's own board looks.");
+  assert.equal(result.reason, "This only changes Dispatch Board for Mesa Lane Freight, so it can go live now.");
 });
 
 test("R5 names Pinecrest when that customer called", () => {
   const result = expectRule("pinecrest", { displayOnly: yes }, "R5", "goes_live", null);
-  assert.equal(result.reason, "This only changes how Pinecrest's own board looks.");
+  assert.equal(result.reason, "This only changes Dispatch Board for Pinecrest Logistics, so it can go live now.");
+});
+
+test("R5 names the product and customer for every product", () => {
+  const result = expectRule("willow", { displayOnly: yes }, "R5", "goes_live", null);
+  assert.equal(result.reason, "This only changes Shopping App for Willow Pine Home, so it can go live now.");
+});
+
+test("R6 true sends device control to the safety lead", () => {
+  const result = expectRule("freshfare", { controlsDevices: yes }, "R6", "needs_person", "safety_lead");
+  assert.equal(result.reason.includes("Cold Chain Monitor"), true);
+});
+
+test("R6 unknown sends the ask to the safety lead", () => {
+  expectRule("northgate", { controlsDevices: unknown, displayOnly: yes }, "R6", "needs_person", "safety_lead");
+});
+
+test("R2 wins over R6 when money is also true", () => {
+  expectRule("freshfare", { touchesMoney: yes, controlsDevices: yes }, "R2", "needs_person", "engineering_lead");
+});
+
+test("R6 wins over R3 and R4", () => {
+  expectRule(
+    "northgate",
+    { controlsDevices: yes, changesDataOrCalculation: yes, appliesToEveryCustomer: yes },
+    "R6",
+    "needs_person",
+    "safety_lead",
+  );
+});
+
+test("R4 true when the change connects an outside system", () => {
+  expectRule("granite", { newScreenOrConnection: yes, displayOnly: yes }, "R4", "needs_person", "product_owner");
+});
+
+test("R1 goes to the security lead for a helpdesk customer", () => {
+  expectRule("cedar", { changesAccess: yes }, "R1", "needs_person", "security_lead");
 });
 
 test("R5 does not match when the display fact is only unknown", () => {

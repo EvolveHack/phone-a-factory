@@ -1,5 +1,5 @@
 // 8090 External API. Failures are logged and never thrown. The local store stays the source for the screen.
-import { CUSTOMERS } from "@/contract/view";
+import { customerInfo, productOf } from "@/contract/products";
 import type { FactoryRequest } from "@/contract/types";
 
 type Config = { base: string; key: string; projectId: string };
@@ -12,15 +12,18 @@ export async function createWorkOrder(r: FactoryRequest): Promise<string | null>
     if (!cfg) return null;
 
     const endingLabel = r.rule?.ending === "goes_live" ? "goes-live" : "needs-a-person";
-    const customerName = CUSTOMERS[r.customer].name;
+    const customerName = customerInfo(r.customer).name;
+    const productName = productOf(r.customer).name;
     const labelIds = await labelIdsFor(cfg, [
       { title: endingLabel, color: endingLabel === "goes-live" ? "green" : "orange" },
+      { title: productName, color: "blue" },
       { title: customerName, color: "blue" },
     ]);
 
-    const title = (r.classification?.askOneLine || r.ask).slice(0, 180);
+    const title = `${productName}: ${r.classification?.askOneLine || r.ask}`.slice(0, 180);
     const markdown = [
       `**Caller:** ${r.callerName}, ${r.callerRole}`,
+      `**Product:** ${productName}`,
       `**Customer:** ${customerName}`,
       `**Ask:** ${r.ask}`,
       `**Caller words:** ${r.callerWords}`,

@@ -15,6 +15,7 @@ export const classificationSchema = z.object({
     changesDataOrCalculation: factSchema,
     appliesToEveryCustomer: factSchema,
     newScreenOrConnection: factSchema,
+    controlsDevices: factSchema,
     displayOnly: factSchema,
   }),
   contentOk: z.boolean(),

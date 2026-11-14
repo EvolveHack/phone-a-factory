@@ -1,16 +1,23 @@
 import { after } from "next/server";
-import { CUSTOMERS } from "@/contract/view";
-import type { FactoryRequest } from "@/contract/types";
+import { PRODUCTS, customerInfo, productOf, type CustomerId } from "@/contract/products";
+import type { Classification, FactoryRequest, RuleResult } from "@/contract/types";
 import { createWorkOrder } from "@/lib/factory8090";
 import { insertRequest, newRequestId, setStatus, updateRequest } from "@/lib/store";
 import { applyRules } from "@/lib/rules/apply";
 import { classifyRequest } from "./classify";
 import { customerFromCompany } from "./customer";
 
-export const SAY_GOES_LIVE = "This only changes your board, so it can go live now. Watch the screen.";
 export const SAY_REJECTED = "I can't take that request.";
-export const SAY_WHICH_COMPANY =
-  "Which company are you calling from, Mesa Lane Freight or Pinecrest Logistics?";
+export const SAY_WHICH_COMPANY = "I did not catch the company. Which company are you calling from? Please say its full name.";
+
+function sayGoesLive(customer: CustomerId): string {
+  return `This only changes your own ${productOf(customer).name}, so it can go live now. Watch the screen.`;
+}
+
+/** Plain names for the rules and reasons. */
+export function namesOf(customer: CustomerId): { customer: string; product: string } {
+  return { customer: customerInfo(customer).name, product: productOf(customer).name };
+}
 
 type SubmitBody = {
   name: string;
@@ -40,13 +47,13 @@ export async function submitRequest(request: Request, options: { requireSecret: 
     );
   }
 
-  const customer = customerFromCompany(body.company);
+  const customer = customerFromCompany(body.company, Object.values(PRODUCTS));
   if (!customer) {
     return Response.json({
       requestId: null,
       ending: null,
       rule: null,
-      reason: "The company is not Mesa Lane Freight or Pinecrest Logistics.",
+      reason: "The company is not one of our customers.",
       say_to_caller: SAY_WHICH_COMPANY,
     });
   }
@@ -80,7 +87,7 @@ export async function submitRequest(request: Request, options: { requireSecret: 
     classification = await classifyRequest({
       ask: body.ask,
       callerWords: body.caller_words,
-      customerName: CUSTOMERS[customer].name,
+      customer,
     });
   } catch (err) {
     console.error("classify failed", err instanceof Error ? err.message : err);
@@ -109,14 +116,32 @@ export async function submitRequest(request: Request, options: { requireSecret: 
     });
   }
 
-  const rule = applyRules(classification.facts, customer);
+  const rule = applyRules(classification.facts, namesOf(customer));
+  await queueClassified(id, classification, rule, request.url);
+
+  return Response.json({
+    requestId: id,
+    ending: rule.ending,
+    rule: rule.rule,
+    reason: rule.reason,
+    say_to_caller: rule.ending === "goes_live" ? sayGoesLive(customer) : rule.reason,
+  });
+}
+
+/** Save the classification and rule, queue the request, then start the builder and the 8090 record after the response. */
+export async function queueClassified(
+  id: string,
+  classification: Classification,
+  rule: RuleResult,
+  requestUrl: string,
+): Promise<void> {
   await updateRequest(id, { classification, rule });
   await setStatus(id, "classified");
   const queued = await setStatus(id, "queued");
 
   after(async () => {
     try {
-      const res = await fetch(new URL("/api/build/next", request.url), { method: "POST" });
+      const res = await fetch(new URL("/api/build/next", requestUrl), { method: "POST" });
       if (!res.ok) console.error("build next failed", res.status);
     } catch (err) {
       console.error("build next failed", err instanceof Error ? err.message : err);
@@ -127,14 +152,6 @@ export async function submitRequest(request: Request, options: { requireSecret: 
     } catch (err) {
       console.error("work order failed", err instanceof Error ? err.message : err);
     }
-  });
-
-  return Response.json({
-    requestId: id,
-    ending: rule.ending,
-    rule: rule.rule,
-    reason: rule.reason,
-    say_to_caller: rule.ending === "goes_live" ? SAY_GOES_LIVE : rule.reason,
   });
 }
 

@@ -16,6 +16,7 @@ function facts(over: Partial<Facts> = {}): Facts {
     changesDataOrCalculation: missing,
     appliesToEveryCustomer: missing,
     newScreenOrConnection: missing,
+    controlsDevices: missing,
     displayOnly: kept,
     ...over,
   };
@@ -40,4 +41,5 @@ test("sets unknown when the quote is missing, blank, or not in the caller words"
   assert.deepEqual(result.changesAccess, { value: "unknown", quote: null });
   assert.deepEqual(result.touchesMoney, { value: "unknown", quote: null });
   assert.deepEqual(result.displayOnly, { value: "unknown", quote: null });
+  assert.deepEqual(result.controlsDevices, { value: "unknown", quote: null });
 });

@@ -6,6 +6,7 @@ const FACT_KEYS = [
   "changesDataOrCalculation",
   "appliesToEveryCustomer",
   "newScreenOrConnection",
+  "controlsDevices",
   "displayOnly",
 ] as const satisfies readonly (keyof Facts)[];
 
